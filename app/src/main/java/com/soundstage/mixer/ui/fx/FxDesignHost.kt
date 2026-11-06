@@ -2,9 +2,9 @@ package com.soundstage.mixer.ui.fx
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -17,19 +17,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.flow.collectLatest
+import com.aetherkeys.fx.AeArpScreen
+import com.aetherkeys.fx.AeSpaceScreen
 import com.aetherkeys.fx.ArpState
+import com.aetherkeys.fx.FxChain
 import com.aetherkeys.fx.FxDesign
-import com.aetherkeys.fx.FxInfoD
-import com.aetherkeys.fx.FxKindD
-import com.aetherkeys.fx.FxSlotState
-import com.aetherkeys.fx.FxWindow
-import com.aetherkeys.fx.FxWindowActions
-import com.aetherkeys.fx.FxWindowState
-import com.aetherkeys.fx.rememberFitScale
+import com.aetherkeys.fx.FxKind
+import com.aetherkeys.fx.FxSlot
+import com.aetherkeys.fx.FxSlotsController
+import com.aetherkeys.fx.FxSlotsWindow
+import com.aetherkeys.fx.SlotRef
 import com.soundstage.mixer.fx.FxController
 import com.soundstage.mixer.fx.FxRegistry
 
@@ -38,26 +37,17 @@ fun stripForTrack(trackId: Int): Int =
     if (trackId == 0) FxRegistry.STRIP_MASTER else (trackId - 1).coerceIn(0, 7)
 
 /**
- * L'ADAPTATEUR mixer -> contrat, celui que `FxWindowState.kt` annonçait.
+ * L'HÔTE DE LA FENÊTRE FX. Elle est détachée : `FxSlotsWindow` est sa propre
+ * surface, et ce fichier est le seul endroit qui connaît à la fois le vocabulaire
+ * du moteur (ids d'effet, tableaux de paramètres, armement du canal d'arp) et
+ * celui de la fenêtre (un slot MIDI, trois slots audio, un catalogue).
  *
- * POURQUOI CE FICHIER EXISTE. Le commit qui a détaché la fenêtre a supprimé le
- * montage dans `MixerScreen` — `ActivePopup.EFFECTS` ne monte plus rien — mais
- * l'hôte n'a jamais été écrit. La fenêtre n'existait donc que dans le harnais de
- * capture : sur l'appareil, appuyer sur FX n'ouvrait rien. C'est ce trou que ce
- * fichier comble, et rien de plus.
+ * CE QUI SONNE. Deux effets existent : Æther Space (effet moteur id 0) et
+ * l'Arpeggiator — qui n'est pas un effet mais un canal intercepté. Le catalogue
+ * ne propose que ces deux-là.
  *
- * LA TRADUCTION, DANS UN SEUL SENS. Le mixer parle ids de moteur et tableaux de
- * 32 flottants ; la fenêtre parle `FxInfoD` et valeurs de maquette. Cet
- * adaptateur est le seul endroit qui connaît les deux vocabulaires — la fenêtre
- * ne change pas d'une ligne, exactement comme le contrat le promettait.
- *
- * CE QUI EST BRANCHÉ. Le catalogue de design dessine Space et l'Arpeggiator. Space
- * est un effet moteur (id 0, sept réglages) ; l'Arpeggiator n'est PAS un effet — il
- * ne fait pas de son, il transforme les notes tenues en flux de notes. Il s'installe
- * dans l'emplacement MIDI, arme le canal de la piste (`setArpChannel`) et pousse sa
- * grille de seize pas. Les trois derniers réglages de Space (Low Cut, Hi Shelf, Mod)
- * sont de la maquette : ils se règlent et se mémorisent ici, mais ne partent pas au
- * moteur, qui ne les a pas.
+ * LES ÉDITEURS SONT AILLEURS. La coque donne tout le corps à `editor` : Space a
+ * son écran, l'arp a le sien. La coque ne les connaît pas.
  */
 @Composable
 fun FxDesignHost(
@@ -68,437 +58,263 @@ fun FxDesignHost(
     val strip = stripForTrack(trackId)
     val appContext = LocalContext.current.applicationContext
     val controller = remember(strip) { FxController(strip, appContext) }
-    val host = remember(strip) { FxDesignModel(controller) }
+    val model = remember(strip) { FxHostModel(controller, trackId) }
 
-    // L'état natif est restauré une fois, puis adopté : le moteur est l'autorité
-    // à ce moment-là, le ré-adopter ensuite ne ferait que le rejouer.
+    // Le moteur est l'autorité à l'ouverture : on lit ce qu'il porte déjà, puis
+    // on pose la chaîne SANS la lui rejouer.
     LaunchedEffect(strip) {
         controller.restore()
-        host.adoptFromEngine()
+        model.adoptFromEngine()
     }
 
-    // Un drag de potard émet une valeur par frame. Écrire dans les préférences à
-    // chaque frame bloquait le thread UI ; on n'écrit qu'une fois le doigt levé.
+    // Un drag de potard émet une valeur par frame ; on n'écrit dans les
+    // préférences qu'une fois le doigt levé.
     LaunchedEffect(strip) {
-        androidx.compose.runtime.snapshotFlow { host.revision }
+        androidx.compose.runtime.snapshotFlow { model.revision }
             .collectLatest {
                 kotlinx.coroutines.delay(500)
                 controller.save()
             }
     }
 
-    // La page de l'arp écrit son état à chaque geste (une case, un pas, le BPM).
-    // Le moteur doit suivre : on pousse dès que l'arp est vivant. `collectLatest`
-    // coalesce les rafales d'un drag, et le push est bon marché (des atomics).
+    // L'arp pousse son état au moteur dès qu'il est vivant.
     LaunchedEffect(strip) {
-        androidx.compose.runtime.snapshotFlow { host.arpRevision() }
-            .collectLatest {
-                if (host.arpIsLive()) host.pushArp()
-            }
+        androidx.compose.runtime.snapshotFlow { model.arpRevision() }
+            .collectLatest { if (model.arpIsLive()) model.pushArp() }
     }
 
-    // Fermer la fenêtre DÉSARME l'arp. Le rack n'est pas encore persisté : sans
-    // ça, le canal resterait intercepté par un arp que plus aucune interface ne
-    // montre, et le joueur ne pourrait plus le couper.
-    androidx.compose.runtime.DisposableEffect(strip) {
+    // Fermer la fenêtre DÉSARME l'arp : sinon le canal resterait intercepté sans
+    // qu'aucune interface ne le montre.
+    DisposableEffect(strip) {
         onDispose { controller.setArpArmed(false) }
     }
+
+    // Le contrôleur publie un StateFlow : le lire en composition ne recompose
+    // PAS. Il faut le collecter en état Compose, sinon ni le catalogue ni
+    // l'éditeur ne s'affichent.
+    val fxState by model.fx.state.collectAsState()
 
     Box(
         modifier = modifier.fillMaxSize().background(Color(0xCC05070C)),
         contentAlignment = Alignment.Center,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            // La hauteur de la fenêtre est réglable : la poignée du bas la fait
-            // glisser, et on la garde d'une ouverture à l'autre. Réduire la
-            // fenêtre réduit le corps, donc les cartes, qui deviennent carrées à
-            // la hauteur basse (FxGeo.CARD_SQUARE_H).
-            val ctx = LocalContext.current
-            val store = remember { FxWindowSizeStore(ctx) }
-            var heightUnits by remember { mutableFloatStateOf(store.load()) }
-            // On garde la taille de la maquette : le facteur ne dépasse jamais 1.
-            val scale = rememberFitScale(maxWidth - 16.dp, maxHeight - 16.dp, heightUnits)
-            FxWindow(
-                state = host.state(), actions = host.actions(onClose), scale = scale,
-                arpState = host.arp, heightUnits = heightUnits,
-                onHeightChange = { heightUnits = it; store.save(it) },
-            )
-        }
+        FxSlotsWindow(
+            state = fxState,
+            controller = model.fx,
+            trackName = model.trackName,
+            trackColor = Color(0xFF8FB2E8),
+            onClose = onClose,
+            editor = { kind, ref ->
+                when (kind) {
+                    FxKind.Arp -> AeArpScreen(model.arp, Modifier.fillMaxSize())
+                    FxKind.Reverb -> model.SpaceEditor(ref)
+                    else -> {}
+                }
+            },
+        )
     }
 }
 
 /**
- * L'état de l'hôte : quatre emplacements de maquette, et les valeurs qui vont
- * avec. Tout est en état Compose — une liste ordinaire ne ferait pas recomposer
- * le rack quand un effet s'ajoute.
+ * L'état de l'hôte : la chaîne (1 MIDI + 3 audio), les valeurs de maquette par
+ * effet, et l'arpégiateur. Tout est en état Compose — une liste ordinaire ne
+ * ferait pas recomposer la fenêtre quand un effet s'ajoute.
  */
-private class FxDesignModel(private val controller: FxController) {
+private class FxHostModel(private val engine: FxController, trackId: Int) {
 
-    /**
-     * Un id de design par emplacement, -1 quand il est libre.
-     *
-     * Le rack part VIDE, comme le design valide : les slots sont libres par
-     * defaut, c'est l'utilisateur qui ajoute un effet par le catalogue. Ne pas
-     * pre-remplir — une version anterieure amorcait Space et l'Arpeggiator et
-     * affichait un rack que la maquette ne montre jamais a l'ouverture.
-     */
-    private val slotIds = mutableStateListOf(-1, -1, -1, -1)
-
-    /** Les valeurs de maquette, par id de design (dix pour Space, sept au moteur). */
-    private val values = mutableStateMapOf<Int, SnapshotStateList<Float>>()
-
-    private val engaged = mutableStateMapOf<Int, Boolean>()
-    private val presets = mutableStateMapOf<Int, String?>()
-    private val user = mutableStateMapOf<Int, SnapshotStateList<String>>()
-
-    /** Les valeurs enregistrées d'un preset utilisateur, par effet puis par nom. */
-    private val userValues = mutableStateMapOf<Int, Map<String, List<Float>>>()
-
-    private var openId by mutableStateOf<Int?>(null)
-    private var catalog by mutableStateOf<FxKindD?>(null)
-    private var custom by mutableStateOf(false)
-
-    /**
-     * L'état de l'arpégiateur, HÉBERGÉ ICI et passé à la fenêtre.
-     *
-     * Il vivait dans la fenêtre par `remember`, donc l'hôte ne pouvait pas le
-     * lire : impossible de le pousser au moteur. Le contrat de la fenêtre est
-     * resté intact — c'est l'hôte qui l'approvisionne.
-     */
+    /** L'état de l'arpégiateur, HÉBERGÉ ICI : l'hôte doit pouvoir le pousser. */
     val arp = ArpState()
 
-    /**
-     * Compteur d'écritures. La persistance l'observe au lieu d'être appelée à
-     * chaque geste : un drag de potard émet une valeur par frame, et écrire dans
-     * les préférences à cette cadence bloque le thread UI.
-     */
+    val trackName: String = if (trackId == 0) "Master" else "Track $trackId"
+
     var revision by mutableStateOf(0)
         private set
 
-    private fun touch() {
-        revision++
+    /** Les valeurs de maquette de Space (quinze, dont sept au moteur). */
+    private val spaceValues = mutableStateListOf<Float>().apply {
+        addAll(FxDesign.SPACE.params.map { it.def })
     }
 
-    private fun vals(id: Int): SnapshotStateList<Float> = values.getOrPut(id) {
-        mutableStateListOf<Float>().apply {
-            addAll(infoOf(id)?.params?.map { it.def } ?: emptyList())
-        }
-    }
+    private val presets = mutableStateMapOf<Int, String?>()
+    private val user = mutableStateMapOf<Int, SnapshotStateList<String>>()
+    private val userValues = mutableStateMapOf<Int, Map<String, List<Float>>>()
+    private var custom by mutableStateOf(false)
 
-    /** Les valeurs de maquette d'un effet, ou ses défauts. */
-    private fun current(id: Int): List<Float> = vals(id).toList()
+    /** L'instantané pris à l'ouverture d'un éditeur : « Discard » y revient. */
+    private var snapshot: List<Float>? = null
 
-    /** L'emplacement moteur d'un emplacement de maquette, -1 si l'effet est purement visuel. */
-    private fun engineSlot(designSlot: Int): Int {
-        val id = slotIds.getOrNull(designSlot) ?: -1
-        return if (id == FxDesign.SPACE.id) designSlot else -1
-    }
+    /** Vrai pendant l'adoption : la chaîne posée ne doit pas être rejouée au moteur. */
+    private var adopting = false
 
-    /** Adopte ce que le moteur porte déjà sur cette bande. */
+    private fun touch() { revision++ }
+
+    val fx: FxSlotsController = FxSlotsController(
+        onChain = { if (!adopting) applyChain(it) },
+        onEditorOpen = { _, _ -> snapshot = spaceValues.toList() },
+        onEditorConfirm = { _, _ -> snapshot = null },
+        onEditorDiscard = { _, _ -> snapshot?.let { restore(it) }; snapshot = null },
+        summaryOf = { kind -> if (kind == FxKind.Reverb) (presets[FxDesign.SPACE.id] ?: "Hall") else kind.desc },
+    )
+
+    private val spaceSlot: Int?
+        get() = fx.state.value.chain.audio.indexOfFirst { it?.kind == FxKind.Reverb }.takeIf { it in 0..2 }
+
+    // ---- adoption ----------------------------------------------------------
+
+    /**
+     * Lit ce que le moteur porte et pose la chaîne correspondante, sans la lui
+     * rejouer : réinstaller l'effet écraserait les réglages qu'on vient de lire.
+     */
     fun adoptFromEngine() {
-        controller.effectIds.forEachIndexed { slot, id ->
-            if (slot >= slotIds.size || id < 0) return@forEachIndexed
-            val design = designForEngine(id) ?: return@forEachIndexed
-            slotIds[slot] = design.id
-            // `engaged` est indexe par id de design, pas par slot : c'est lui que
-            // le rack lit pour allumer ou griser la carte.
-            engaged[design.id] = !controller.bypassed.getOrElse(slot) { false }
-            presets[design.id] = controller.presetNames.getOrNull(slot)
-                ?: design.presets.keys.firstOrNull()
-            val v = vals(design.id)
-            controller.params.getOrNull(slot)?.forEachIndexed { i, x -> if (i < v.size) v[i] = x }
+        var midi: FxSlot? = null
+        val audio = MutableList<FxSlot?>(3) { null }
+        engine.effectIds.forEachIndexed { slot, id ->
+            if (slot > 2 || id != FxDesign.SPACE.id) return@forEachIndexed
+            val on = !engine.bypassed.getOrElse(slot) { false }
+            audio[slot] = FxSlot(System.nanoTime(), FxKind.Reverb, on, summaryOf())
+            engine.params.getOrNull(slot)?.forEachIndexed { i, x -> if (i < spaceValues.size) spaceValues[i] = x }
+            engine.presetNames.getOrNull(slot)?.let { presets[FxDesign.SPACE.id] = it }
+                ?: run { presets[FxDesign.SPACE.id] = FxDesign.SPACE.presets.keys.firstOrNull() }
         }
+        adopting = true
+        fx.adopt(FxChain(midi = midi, audio = audio))
+        adopting = false
+        touch()
     }
 
-    fun state(): FxWindowState {
-        val slots = List(FxDesign.SLOTS) { i ->
-            val id = slotIds.getOrNull(i) ?: -1
-            val info = infoOf(id) ?: return@List null
-            val name = presets[id] ?: info.presets.keys.firstOrNull()
-            FxSlotState(
-                info = info,
-                on = engaged[id] ?: true,
-                presetName = name,
-                values = current(id),
-                palette = name?.let { info.palettes[it] },
-            )
-        }
-        return FxWindowState(
-            slots = slots,
-            catalog = catalog?.let { FxDesign.list(it) },
-            openEffect = openId?.let { infoOf(it) },
-            custom = custom,
-            presetName = openId?.let { presets[it] },
-            userPresets = user.mapValues { it.value.toList() },
-        )
-    }
+    private fun summaryOf(): String = presets[FxDesign.SPACE.id] ?: "Hall"
 
-    fun actions(onClose: () -> Unit): FxWindowActions = object : FxWindowActions {
-        override fun onClose() = onClose()
+    // ---- chaîne -> moteur --------------------------------------------------
 
-        override fun closePage() {
-            openId = null
-            catalog = null
-        }
+    /**
+     * La chaîne a changé : on la répercute au moteur. Le slot MIDI arme ou
+     * désarme le canal ; les slots audio installent ou retirent l'effet Space.
+     */
+    private fun applyChain(chain: FxChain) {
+        // MIDI : armer, c'est pousser toute la config puis choisir le canal.
+        val wantArp = chain.midi?.kind == FxKind.Arp && chain.midi.on
+        if (wantArp) { pushArp(); engine.setArpArmed(true) }
+        else { engine.setArpArmed(false); engine.arpAllNotesOff() }
 
-        override fun open(effectId: Int) {
-            openId = effectId
-            catalog = null
-            custom = false
-        }
-
-        override fun openCatalog(kind: FxKindD) {
-            catalog = kind
-            openId = null
-        }
-
-        override fun add(effectId: Int) {
-            val info = infoOf(effectId) ?: return
-            val slot = freeSlotFor(info) ?: return
-            slotIds[slot] = effectId
-            engaged[effectId] = true
-            presets[effectId] = info.presets.keys.firstOrNull()
-            custom = false
-            // Un effet du catalogue de design sans contrepartie moteur (l'ARP)
-            // s'installe à l'écran seulement : il n'y a rien à faire sonner.
-            if (effectId == FxDesign.SPACE.id) {
-                if (controller.setEffect(slot, FxDesign.SPACE.id)) {
-                    pushAll(effectId, slot)
-                } else {
-                    slotIds[slot] = -1
+        // AUDIO
+        chain.audio.forEachIndexed { slot, s ->
+            if (slot > 2) return@forEachIndexed
+            if (s != null && s.kind == FxKind.Reverb) {
+                if (engine.effectIds.getOrNull(slot) != FxDesign.SPACE.id) {
+                    if (engine.setEffect(slot, FxDesign.SPACE.id)) pushSpace(slot) else return@forEachIndexed
                 }
-            } else if (effectId == FxDesign.ARP.id) {
-                // L'Arpeggiator n'est pas un effet : il ne fait pas de son, il
-                // transforme les notes tenues en flux de notes. On arme le canal
-                // de la piste et on pousse la grille ; le moteur fait le reste.
-                armArp()
+                engine.setBypass(slot, !s.on)
+            } else if (engine.effectIds.getOrNull(slot) == FxDesign.SPACE.id) {
+                engine.setEffect(slot, -1)
             }
-            catalog = null
-            touch()
         }
-
-        override fun remove(slot: Int) {
-            val id = slotIds.getOrNull(slot) ?: -1
-            if (id < 0) return
-            val engine = engineSlot(slot)
-            if (engine >= 0) controller.setEffect(engine, -1)
-            if (id == FxDesign.ARP.id) disarmArp()
-            slotIds[slot] = -1
-            engaged.remove(id)
-            if (openId == id) openId = null
-            touch()
-        }
-
-        override fun toggle(slot: Int) {
-            val id = slotIds.getOrNull(slot) ?: -1
-            if (id < 0) return
-            val now = !(engaged[id] ?: true)
-            engaged[id] = now
-            if (id == FxDesign.ARP.id) {
-                // Contourner l'arp, c'est le désarmer : les notes repartent
-                // directement au synthé au lieu d'être avalées par le moteur.
-                if (now) armArp() else controller.setArpArmed(false)
-            } else {
-                val engine = engineSlot(slot)
-                if (engine >= 0) controller.setBypass(engine, !now)
-            }
-            touch()
-        }
-
-        override fun setValue(index: Int, value: Float) {
-            val id = openId ?: return
-            val v = vals(id)
-            if (index !in v.indices) return
-            v[index] = value.coerceIn(0f, 1f)
-            custom = true
-            val slot = slotIds.indexOf(id)
-            val engine = if (slot >= 0) engineSlot(slot) else -1
-            // Seuls les réglages que le moteur possède y sont poussés : les
-            // suivants sont ceux que la maquette ajoute.
-            if (engine >= 0 && index < engineParamCount()) {
-                controller.setEffectParam(engine, index, v[index])
-            }
-            touch()
-        }
-
-        override fun setSlotValue(slot: Int, index: Int, value: Float) {
-            val id = slotIds.getOrNull(slot) ?: return
-            if (id < 0) return
-            val v = vals(id)
-            if (index !in v.indices) return
-            v[index] = value.coerceIn(0f, 1f)
-            custom = true
-            // La vignette de la carte règle le MÊME tableau que la page : régler
-            // depuis la carte puis ouvrir l'effet ne doit pas montrer deux états.
-            val engine = engineSlot(slot)
-            if (engine >= 0 && index < engineParamCount()) {
-                controller.setEffectParam(engine, index, v[index])
-            }
-            touch()
-        }
-
-        override fun pickPreset(name: String) {
-            val id = openId ?: return
-            val info = infoOf(id) ?: return
-            val table = info.presets[name] ?: userValues[id]?.get(name)
-            if (table != null) {
-                val v = vals(id)
-                table.forEachIndexed { i, x -> if (i < v.size) v[i] = x }
-                val slot = slotIds.indexOf(id)
-                val engine = if (slot >= 0) engineSlot(slot) else -1
-                val index = info.presets.keys.indexOf(name)
-                if (engine >= 0) {
-                    if (index >= 0 && index < enginePresetCount()) controller.applyPreset(engine, index)
-                    else pushAll(id, slot)
-                }
-            }
-            presets[id] = name
-            custom = false
-            touch()
-        }
-
-        // La feuille de nommage n'existe pas encore dans la fenêtre détachée :
-        // le bouton Save est rendu et cliquable, mais n'ouvre rien. À brancher
-        // quand le composant de saisie sera porté.
-        override fun beginSave() {}
-
-        override fun saveUserPreset(name: String) {
-            val id = openId ?: return
-            val clean = name.trim().ifEmpty { "User ${(user[id]?.size ?: 0) + 1}" }
-            // Un preset utilisateur est une copie des réglages courants. Le nom
-            // est unique : réenregistrer sous le même nom met à jour au lieu de
-            // créer un doublon, sinon la liste se remplit de copies identiques.
-            user.getOrPut(id) { mutableStateListOf() }.let { if (clean !in it) it.add(clean) }
-            userValues[id] = (userValues[id] ?: emptyMap()) + (clean to vals(id).toList())
-            presets[id] = clean
-            custom = false
-            touch()
-        }
-
-        override fun deleteUserPreset(name: String) {
-            val id = openId ?: return
-            user[id]?.remove(name)
-            userValues[id] = (userValues[id] ?: emptyMap()) - name
-            if (presets[id] == name) presets[id] = infoOf(id)?.presets?.keys?.firstOrNull()
-            touch()
-        }
+        touch()
     }
 
-    /** Le premier emplacement libre du bon genre : 0..2 pour l'audio, 3 pour le MIDI. */
-    private fun freeSlotFor(info: FxInfoD): Int? {
-        val range = if (info.kind == FxKindD.MIDI) FxDesign.MAX_AUDIO until FxDesign.SLOTS
-        else 0 until FxDesign.MAX_AUDIO
-        return range.firstOrNull { slotIds[it] < 0 }
+    private fun pushSpace(slot: Int) {
+        val count = FxRegistry.info(FxDesign.SPACE.id).params.size
+        spaceValues.forEachIndexed { i, x -> if (i < count) engine.setEffectParam(slot, i, x) }
     }
 
-    private fun pushAll(id: Int, slot: Int) {
-        val engine = if (slot >= 0) engineSlot(slot) else -1
-        if (engine < 0) return
-        vals(id).forEachIndexed { i, x ->
-            if (i < engineParamCount()) controller.setEffectParam(engine, i, x)
-        }
+    private fun restore(v: List<Float>) {
+        v.forEachIndexed { i, x -> if (i < spaceValues.size) spaceValues[i] = x }
+        spaceSlot?.let { pushSpace(it) }
+        touch()
     }
 
     // ---- arpégiateur -------------------------------------------------------
-    // Le moteur ne connaît pas d'« effet ARP » : il connaît un canal intercepté.
-    // Armer, c'est donc pousser toute la configuration puis choisir le canal.
-    // Tout ce que la page peut régler est envoyé ici — sinon un réglage serait
-    // un dessin, pas un contrôle.
 
-    /** L'arp est-il dans le rack ET engagé ? */
-    private fun arpLive(): Boolean {
-        val slot = slotIds.indexOf(FxDesign.ARP.id)
-        if (slot < 0) return false
-        return engaged[FxDesign.ARP.id] ?: true
-    }
+    fun arpIsLive(): Boolean = fx.state.value.chain.midi?.let { it.kind == FxKind.Arp && it.on } == true
 
-    /** Pour l'observateur : la page n'a pas de compteur, on en dérive un. */
-    fun arpIsLive(): Boolean = arpLive()
+    fun arpRevision(): Int = arp.sub * 1_000_003 + arp.style * 100_003 + arp.steps * 10_007 +
+        arp.bpm * 101 + arp.swing + arp.on.count { it } * 31 + arp.vel.sumOf { (it * 1000).toInt() }
 
-    /**
-     * Une valeur qui change à chaque réglage de l'arp. `snapshotFlow` n'observe
-     * que des lectures d'état Compose : on relit donc ici tout ce que la page
-     * peut modifier, et on combine — c'est le changement qui compte, pas la
-     * valeur.
-     */
-    fun arpRevision(): Int = arp.sub * 1_000_003 +
-        arp.style * 100_003 +
-        arp.steps * 10_007 +
-        arp.bpm * 101 +
-        arp.swing +
-        arp.on.count { it } * 31 +
-        arp.vel.sumOf { (it * 1000).toInt() }
-
-    private fun armArp() {
-        pushArp()
-        controller.setArpArmed(true)
-    }
-
-    private fun disarmArp() {
-        controller.setArpArmed(false)
-        // Les notes déjà allumées par l'arp doivent être relâchées, sinon elles
-        // sonnent sans fin : le moteur vide sa liste sur le canal d'émission.
-        controller.arpAllNotesOff()
-    }
-
-    /**
-     * Pousse les réglages de la page au moteur. Les indices suivent [ArpParam]
-     * natif : RATE, MODE, OCTAVES, GATE, SWING, HOLD, VELOCITY, STEPS. ON n'est
-     * pas poussé : c'est l'armement du canal qui l'allume (source unique).
-     */
     fun pushArp() {
-        // sub (0..3) = 1/4, 1/8, 1/16, 1/32 -> ArpRate::Quarter..ThirtySecond.
-        controller.setArpParam(1, arp.sub / 3f)
-        // style (0..3) = up, down, updown, random -> ArpMode::Up, Down, UpDown, Random.
-        val mode = when (arp.style) {
-            1 -> 1f
-            2 -> 2f
-            3 -> 4f  // Random (UpDown = 2, DownUp = 3, Random = 4)
-            else -> 0f
-        }
-        controller.setArpParam(2, mode / 5f)
-        controller.setArpParam(3, 0f)          // octaves = 1 (la page n'en a pas)
-        controller.setArpParam(4, 0.5f)        // gate = ~52 %
-        controller.setArpParam(5, arp.swing / 100f)
-        controller.setArpParam(6, 0f)          // hold off
-        controller.setArpParam(7, 0.85f)       // velocity de base
-        // steps (1..16) -> 0..1 sur 16 colonnes.
-        controller.setArpParam(8, (arp.steps - 1).coerceIn(0, 15) / 15f)
-        controller.setArpTempo(arp.bpm.toDouble())
+        // Indices [ArpParam] natif : RATE, MODE, OCTAVES, GATE, SWING, HOLD, VELOCITY, STEPS.
+        engine.setArpParam(1, arp.sub / 3f)
+        val mode = when (arp.style) { 1 -> 1f; 2 -> 2f; 3 -> 4f; else -> 0f }
+        engine.setArpParam(2, mode / 5f)
+        engine.setArpParam(3, 0f)
+        engine.setArpParam(4, 0.5f)
+        engine.setArpParam(5, arp.swing / 100f)
+        engine.setArpParam(6, 0f)
+        engine.setArpParam(7, 0.85f)
+        engine.setArpParam(8, (arp.steps - 1).coerceIn(0, 15) / 15f)
+        engine.setArpTempo(arp.bpm.toDouble())
         for (i in 0 until 16) {
             val on = i < arp.steps && arp.on.getOrElse(i) { true }
             val vel = if (i < arp.steps) arp.vel.getOrElse(i) { 1f } else 0f
-            controller.setArpStep(i, on, vel)
+            engine.setArpStep(i, on, vel)
         }
     }
 
-    /** Nombre de réglages que le moteur porte réellement pour l'effet de maquette. */
-    private fun engineParamCount(): Int =
-        com.soundstage.mixer.fx.FxRegistry.info(FxDesign.SPACE.id).params.size
+    // ---- éditeur Space -----------------------------------------------------
 
-    private fun enginePresetCount(): Int =
-        com.soundstage.mixer.fx.FxRegistry.info(FxDesign.SPACE.id).presets.size
-
-    private fun infoOf(id: Int): FxInfoD? = when (id) {
-        FxDesign.SPACE.id -> FxDesign.SPACE
-        FxDesign.ARP.id -> FxDesign.ARP
-        else -> null
+    @Composable
+    fun SpaceEditor(ref: SlotRef) {
+        val info = FxDesign.SPACE
+        AeSpaceScreen(
+            fx = info,
+            values = spaceValues.toList(),
+            presetName = presets[info.id],
+            userNames = user[info.id]?.toList() ?: emptyList(),
+            custom = custom,
+            onValue = { i, v -> setValue(ref, i, v) },
+            onPreset = { pickPreset(it) },
+            onSave = { savePreset(it) },
+            onDeleteUser = { deletePreset(it) },
+            onBack = { fx.back() },
+            onClose = { fx.back() },
+        )
     }
 
-    private fun designForEngine(engineId: Int): FxInfoD? =
-        if (engineId == FxDesign.SPACE.id) FxDesign.SPACE else null
-}
+    private fun setValue(ref: SlotRef, index: Int, value: Float) {
+        if (index !in spaceValues.indices) return
+        if (snapshot == null) snapshot = spaceValues.toList()
+        spaceValues[index] = value.coerceIn(0f, 1f)
+        custom = true
+        val slot = ref.index
+        if (!ref.midi && index < FxRegistry.info(FxDesign.SPACE.id).params.size &&
+            engine.effectIds.getOrNull(slot) == FxDesign.SPACE.id
+        ) {
+            engine.setEffectParam(slot, index, spaceValues[index])
+        }
+        touch()
+    }
 
+    private fun pickPreset(name: String) {
+        val info = FxDesign.SPACE
+        val table = info.presets[name] ?: userValues[info.id]?.get(name)
+        if (table != null) {
+            table.forEachIndexed { i, x -> if (i < spaceValues.size) spaceValues[i] = x }
+            val index = info.presets.keys.indexOf(name)
+            val slot = spaceSlot
+            if (slot != null) {
+                if (index >= 0 && index < FxRegistry.info(info.id).presets.size) engine.applyPreset(slot, index)
+                else pushSpace(slot)
+            }
+        }
+        presets[info.id] = name
+        custom = false
+        snapshot = null
+        touch()
+    }
 
-/**
- * OÙ VIT LA HAUTEUR CHOISIE. Une préférence locale : elle n'appartient pas au
- * projet, elle appartient à l'utilisateur et à son écran. On ne la range donc
- * pas dans l'état de l'app (qui part dans le JSON d'un setlist), mais dans les
- * préférences — la même place que les autres réglages d'affichage.
- */
-private class FxWindowSizeStore(context: android.content.Context) {
-    private val prefs = context.getSharedPreferences("fx_window", android.content.Context.MODE_PRIVATE)
-    fun load(): Float = prefs.getFloat(KEY_H, com.aetherkeys.fx.FxGeo.H)
-    fun save(h: Float) = prefs.edit().putFloat(KEY_H, h).apply()
-    private companion object { const val KEY_H = "height_units" }
+    private fun savePreset(name: String) {
+        val id = FxDesign.SPACE.id
+        val clean = name.trim().ifEmpty { "User ${(user[id]?.size ?: 0) + 1}" }
+        user.getOrPut(id) { mutableStateListOf() }.let { if (clean !in it) it.add(clean) }
+        userValues[id] = (userValues[id] ?: emptyMap()) + (clean to spaceValues.toList())
+        presets[id] = clean
+        custom = false
+        touch()
+    }
+
+    private fun deletePreset(name: String) {
+        val id = FxDesign.SPACE.id
+        user[id]?.remove(name)
+        userValues[id] = (userValues[id] ?: emptyMap()) - name
+        if (presets[id] == name) presets[id] = FxDesign.SPACE.presets.keys.firstOrNull()
+        touch()
+    }
 }
