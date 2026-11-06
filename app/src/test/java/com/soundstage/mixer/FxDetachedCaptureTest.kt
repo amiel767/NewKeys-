@@ -6,7 +6,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -31,10 +32,11 @@ import org.robolectric.annotation.GraphicsMode
  * avec la référence au pixel. On ne dépend d'aucun moteur — l'état est fabriqué
  * à la main, ce qui est précisément l'intérêt du contrat détaché.
  *
- * LA PAGE DE SPACE EST CELLE DU REDESIGN : gros potard principal à gauche, case
- * déroulante de preset et grille de contrôles à droite, fond bicolore qui suit
- * le preset. Les vues couvrent deux presets (Hall, Shimmer) pour vérifier que
- * le fond change bien avec eux.
+ * LA PAGE DE SPACE EST CELLE DE LA RÉFÉRENCE : le mot Æther/Space/le motif, la
+ * figure circulaire du preset au centre, le gros potard DECAY, les anneaux de
+ * gauche, les quatre panneaux de réglages et la liste de presets. Les vues
+ * couvrent plusieurs presets pour vérifier que la figure ET la rampe changent
+ * avec eux.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -84,7 +86,7 @@ class FxDetachedCaptureTest {
         FxWindowState(slots = listOf(space(), null, null, arp())),
     )
 
-    /** Le rack plein, Space contourné : on voit l'orbe grisé et le voile. */
+    /** Le rack plein, Space contourné : on voit les potards grisés et le voile. */
     @Test
     fun fx_full() = capture(
         "fx_full",
@@ -98,7 +100,7 @@ class FxDetachedCaptureTest {
         FxWindowState(slots = listOf(space(), null, null, null), catalog = FxDesign.audio),
     )
 
-    /** La page de Space : l'orbe à gauche, presets et réglages à droite. */
+    /** La page de Space : la figure du preset au centre, les réglages autour. */
     @Test
     fun fx_space() = capture(
         "fx_space",
@@ -138,9 +140,9 @@ class FxDetachedCaptureTest {
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1400)
-        // Le bouton de preset est la PASTILLE compacte : son texte est le nom du
-        // preset seul. Le titre de la page (« Space Hall ») est un autre nœud.
-        composeTestRule.onNodeWithText("Hall").performClick()
+        // Le titre de la page contient aussi « Hall », et il n'est pas cliquable :
+        // on cible le nœud qui PORTE l'action de clic, c'est-à-dire la pastille.
+        composeTestRule.onNode(hasText("Hall") and hasClickAction()).performClick()
         composeTestRule.mainClock.advanceTimeBy(220)
         composeTestRule.onRoot().captureRoboImage("src/test/screenshots/fx_space_dropdown.png")
     }
@@ -153,7 +155,9 @@ class FxDetachedCaptureTest {
     @Test
     fun fx_space_knob_low() {
         val fx = FxDesign.SPACE
-        val vals = fx.presets.getValue("Hall").toMutableList().also { it[4] = .08f }
+        // Le réglage principal est DECAY (index 2) : c'est lui que le gros
+        // potard affiche, donc c'est lui qu'on pousse bas.
+        val vals = fx.presets.getValue("Hall").toMutableList().also { it[2] = .08f }
         capture(
             "fx_space_knob_low",
             FxWindowState(
@@ -164,6 +168,16 @@ class FxDetachedCaptureTest {
             ),
         )
     }
+
+    /** Une figure différente : Cathedral, la rosace. La figure suit le preset. */
+    @Test
+    fun fx_space_cathedral() = capture(
+        "fx_space_cathedral",
+        FxWindowState(
+            slots = listOf(space(preset = "Cathedral"), null, null, arp()),
+            openEffect = FxDesign.SPACE, presetName = "Cathedral",
+        ),
+    )
 
     /** La page de l'Arpeggiator : la barre de commandes et la grille de 16 pas. */
     @Test
