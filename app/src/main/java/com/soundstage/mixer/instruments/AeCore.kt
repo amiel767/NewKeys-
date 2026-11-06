@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
+    ORGAN(6, "OrganLab", 36), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
     // 17 = contrat du moteur (fx_piano.h, kParams).  L'index 12 (ex-DRIVE) est
     // recycle en bruit de touche, 13 (ex-PUNCH) est libre, 16 est le bruit de
     // marteau.  AMP et PUNCH sont retires du moteur : voir l'en-tete de fx_piano.h.
@@ -88,7 +88,14 @@ object AeFmt {
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {
-        when (i) { 26, 27, 28, 29 -> pct(v); 30 -> "${(-30 + v * 36).toInt()}dB"; else -> "" }
+        // 31..35 are the reference console's own controls. The rotary is a speed, not a percentage.
+        when (i) {
+            25 -> listOf("STOP", "SLOW", "FAST")[(v * 2).roundToInt().coerceIn(0, 2)]
+            26, 27, 28, 29, 32, 33, 34, 35 -> pct(v)
+            30 -> "${(-30 + v * 36).toInt()}dB"
+            31 -> listOf("ROOM", "STAGE", "HALL")[(v * 2).roundToInt().coerceIn(0, 2)]
+            else -> ""
+        }
     } else when (i) {
         0, 1 -> wn[(v * 3).roundToInt().coerceIn(0, 3)]
         2 -> "${(v * 50).toInt()}ct"

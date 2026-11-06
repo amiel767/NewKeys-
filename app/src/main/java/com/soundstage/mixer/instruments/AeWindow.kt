@@ -134,7 +134,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // but the user wants it back: it is the name of the instrument, and the pill is the
             // name of the preset. Two different things, so both belong here.
             when (s.instrument) {
-                AeInstrument.ORGAN -> AeT("ÆTHER ORGAN", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                AeInstrument.ORGAN -> AeT("OrganLab", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> {

@@ -346,7 +346,7 @@ fun AeSeg(
 @Composable
 fun AeDrawbar(
     c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number,
-    h: Number = 196, step: Number = 16, limitTop: Number = 0,
+    h: Number = 196, step: Number = 16, limitTop: Number = 0, w: Number = 34,
 ) {
     val sc = LocalAeScale.current
     val n = (c.v(idx) * 8).roundToInt()
@@ -361,7 +361,9 @@ fun AeDrawbar(
     val animated by animateFloatAsState(target, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
     val capY = if (dragging) target else animated
     val floorY = limitTop.toFloat() - y.toFloat()
-    fun fromY(py: Float) = (((py / sc) - 14f - 13f) / step.toFloat()).roundToInt().coerceIn(0, 8) / 8f
+    // The cap is 0.882 * w tall, so the grab offset is half of that less the 2-unit inset.
+    val capH = 30f * w.toFloat() / 34f
+    fun fromY(py: Float) = (((py / sc) - 14f - (capH / 2f - 2f)) / step.toFloat()).roundToInt().coerceIn(0, 8) / 8f
     val capTop = when (color) {
         0 -> Color(0xFF6B3A1C)   // brown
         1 -> Color(0xFFEDE7DA)   // white
@@ -373,7 +375,7 @@ fun AeDrawbar(
         else -> Color(0xFF0A0A0E)
     }
     Box(
-        Modifier.at(x, y, 34, h).pointerInput(idx) {
+        Modifier.at(x, y, w, h).pointerInput(idx) {
             awaitEachGesture {
                 val d = awaitFirstDown(requireUnconsumed = false)
                 dragging = true
@@ -390,19 +392,19 @@ fun AeDrawbar(
         val railH = h.toFloat() - railTop - 24f
         FaderRail(
             accent = Color(0xFFF2F5FA),
-            modifier = Modifier.at(12.2f, railTop, 9.6f, railH),
+            modifier = Modifier.at(12.2f * w.toFloat() / 34f, railTop, 9.6f * w.toFloat() / 34f, railH),
             level = c.v(idx),
             glow = 0f,
             body = Color(0xFF0C0C10),
         )
         // Foot marking, small and dim: at 8 it competed with the rail, and the cap's own position
         // already carries the reading.
-        AeT(foot, 7, Color(0xFF8C7F63), Modifier.at(0, 0.5f, 34, 10), AeFonts.plate, align = TextAlign.Center)
+        AeT(foot, 7, Color(0xFF8C7F63), Modifier.at(0, 0.5f, w, 10), AeFonts.plate, align = TextAlign.Center)
         // Step number, in the band the short rail leaves free: under the rail, never on it.
-        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 22f, 34, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
+        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 22f, w, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
         // The cap is clipped to its slot, so it can never ride up over the marking above.
-        Box(Modifier.at(0f, 0f, 34, h).clip(RoundedCornerShape(6.su()))) {
-            Box(Modifier.at(3f, capY, 28, 30)) {
+        Box(Modifier.at(0f, 0f, w, h).clip(RoundedCornerShape(6.su()))) {
+            Box(Modifier.at(3f * w.toFloat() / 34f, capY, 28f * w.toFloat() / 34f, capH)) {
                 FaderThumb(
                     accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false,
                     capTop = capTop, capBottom = capBottom, showLed = false,

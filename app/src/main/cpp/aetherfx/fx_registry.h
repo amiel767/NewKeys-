@@ -117,7 +117,14 @@ inline const EffectInfo& info(int id) {
        {"Tone", 0.0f, 100.0f, " %", 0, 0.55f, C::Linear, false},
        {"Drive", 0.0f, 100.0f, " %", 0, 0.4f, C::Linear, false},
        {"Space", 0.0f, 100.0f, " %", 0, 0.25f, C::Linear, false},
-       {"Level", -24.0f, 6.0f, " dB", 1, 0.8f, C::Linear, false}},
+       {"Level", -24.0f, 6.0f, " dB", 1, 0.8f, C::Linear, false},
+       // The reference console's own controls, appended so every preset written before them keeps
+       // its 31 values and takes these five from the neutral 0.5 in padded().
+       {"RevMode", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Treble", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Cabinet", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Amount", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"VelSense", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false}},
       {{"Gospel", {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.6f, 1.0f, 1.0f, 1.0f, 0.3f, 0.55f, 0.4f, 0.25f, 0.8f}},
        {"Full", {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.5f, 0.3f, 0.5f, 0.2f, 0.2f, 0.8f}},
        {"Jazz", {1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.2f, 1.0f, 0.0f, 1.0f, 0.35f, 0.5f, 0.3f, 0.2f, 0.8f}},
