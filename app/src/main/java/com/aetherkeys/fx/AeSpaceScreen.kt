@@ -171,41 +171,38 @@ fun AeSpaceScreen(
             letterSpacing = (-1).sp, maxLines = 1,
         )
 
-        // ── LA BARRE DE PRESET, EN HAUT À DROITE. Elle était dans le pied ; elle
-        //    remonte au même rang que le titre, à côté de la fermeture. Le pas à
-        //    pas la suit : il ne sert qu'à elle. À gauche du titre il serait
-        //    tombé sous le gros potard, qui commence à y=78.
+        // ── LA FERMETURE, SEULE EN HAUT À DROITE. Le nom du preset vit dans la
+        //    pastille du bas : l'écrire ici aussi le montrait DEUX fois.
         Row(
             Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // La fermeture est PLATE et prend la teinte du preset : c'était une
+            // puce bombée, comme un bouton de matériel, ce que la référence n'a
+            // pas. Le retour a disparu — la fermeture suffit à sortir de la page.
+            SpaceFlatButton(AeFxIcons.CLOSE, pal[0], 30.dp, 16.dp, onClose)
+        }
+
+        // ── LE PIED, EN BAS À DROITE : la case de preset et son pas à pas, puis
+        //    SAVE. Le nom n'est écrit qu'ICI — une seconde copie en haut le
+        //    doublait.
+        Row(
+            Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SpacePresetPill(
                 preset = preset, modified = modified, pal = pal, open = dropOpen,
                 onClick = { dropOpen = !dropOpen; saveOpen = false },
             )
-            Spacer(Modifier.width(4.dp))
-            SpaceFlatButton(AeFxIcons.STEP_PREV, pal[0], 26.dp, 18.dp) {
+            Spacer(Modifier.width(6.dp))
+            SpaceFlatButton(AeFxIcons.STEP_PREV, pal[0], 32.dp, 20.dp) {
                 stepPreset(all, preset, -1)?.let(onPreset)
             }
-            SpaceFlatButton(AeFxIcons.STEP_NEXT, pal[0], 26.dp, 18.dp) {
+            SpaceFlatButton(AeFxIcons.STEP_NEXT, pal[0], 32.dp, 20.dp) {
                 stepPreset(all, preset, 1)?.let(onPreset)
             }
-            Spacer(Modifier.width(8.dp))
-            // Le NOM DU PRESET est écrit à gauche de SAVE, en clair : c'est la
-            // seule chose qu'on vient lire ici, et un libellé de champ la rendrait
-            // plus petite que la valeur.
-            Text(
-                preset + if (modified) " •" else "",
-                color = pal[1], fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                fontFamily = FxFonts.ui, maxLines = 1,
-            )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             SpaceFlatText("SAVE", pal[3], saveOpen) { saveOpen = !saveOpen; dropOpen = false }
-            Spacer(Modifier.width(8.dp))
-            // La fermeture est PLATE et prend la teinte du preset : c'était une
-            // puce bombée, comme un bouton de matériel, ce que la référence n'a
-            // pas. Le retour a disparu — la fermeture suffit à sortir de la page.
-            SpaceFlatButton(AeFxIcons.CLOSE, pal[0], 30.dp, 16.dp, onClose)
         }
 
         // ── LA COLONNE DE GAUCHE : MIX puis PRE-DELAY, deux anneaux fins.
@@ -267,13 +264,13 @@ fun AeSpaceScreen(
             }
         }
 
-        // ── La liste des presets : sous la barre du haut, dont elle descend.
+        // ── La liste des presets : elle monte DEPUIS la pastille du bas.
         if (dropOpen) {
             Box(
                 Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { dropOpen = false },
             )
             Column(
-                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 108.dp)
+                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 62.dp)
                     .width(300.dp).heightIn(max = 240.dp).clip(RoundedCornerShape(18.dp))
                     .background(Color(0xF70E0E0E))
                     .border(2.dp, pal[0].copy(alpha = .5f), RoundedCornerShape(18.dp))
@@ -342,7 +339,7 @@ fun AeSpaceScreen(
                 Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { saveOpen = false },
             )
             Column(
-                Modifier.align(Alignment.TopEnd).padding(end = 24.dp, top = 46.dp)
+                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 62.dp)
                     .width(280.dp).clip(RoundedCornerShape(18.dp))
                     .background(Color(0xF70E0E0E))
                     .border(2.dp, pal[3].copy(alpha = .55f), RoundedCornerShape(18.dp)).padding(12.dp),
@@ -423,20 +420,20 @@ private fun SpacePresetPill(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
+        Modifier.height(40.dp).clip(RoundedCornerShape(20.dp))
             .background(Color.Black.copy(alpha = .35f))
-            .border(2.dp, if (open) pal[0] else pal[0].copy(alpha = .45f), RoundedCornerShape(16.dp))
+            .border(2.dp, if (open) pal[0] else pal[0].copy(alpha = .45f), RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             preset + if (modified) " •" else "",
-            color = pal[1], fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            color = pal[1], fontSize = 19.sp, fontWeight = FontWeight.Bold,
             fontFamily = FxFonts.ui, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.width(8.dp))
-        FxIcon(AeFxIcons.CHEV_DOWN, size = 12.dp, color = pal[0])
+        Spacer(Modifier.width(10.dp))
+        FxIcon(AeFxIcons.CHEV_DOWN, size = 15.dp, color = pal[0])
     }
 }
 
