@@ -292,3 +292,19 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   s'affichent. La pilule doit lire le `manager` recu, PAS le singleton `AeInstruments`.
 - **Jamais deux controles pour un meme parametre** (chips ROTARY = duplication du p25).
 - Page de revue : `/workspace/dl/pub/new5/index.html` (sert `/workspace/dl/pub/`).
+
+## Session 2026-11-06 (suite) — Organ : reference image + JSX
+- **L'agent ne recoit AUCUNE image dans le chat.** L'utilisateur depose via le web GitHub
+  (« Add files via upload » sur `origin/main`, `app/IMG_*.jpg`). Recuperer avec
+  `git show origin/main:<chemin> > /tmp/ref.jpg` ; trouver via
+  `git log --all --diff-filter=A --name-only --since="10 days ago" | grep -iE '\.(png|jpg)$'`.
+- **Reference organ (1080x513)** : cadre **rouge carmin #B81436** (« pas rouge » = a
+  remplacer par du bois), ardoise bleu 210 deg, rail acier **#F8F9FD** 10 px, capot
+  **#232323**. 9 tirettes : slot **32**, pas **53**, 25 crans (6,4 px). 2e rangee =
+  tirettes **abaissees** a corps **bois**. Palette sourde (value med 0,37) : booster
+  saturation/contraste AVANT d'analyser la structure.
+- **Rendu JSX headless** : `tools/design/render_jsx.sh` (/tmp/jsx, react18 + esbuild
+  `--jsx=automatic` + chromium `--headless=new --screenshot`). `file://` masque les
+  erreurs JS en « Script error. » -> servir en http pour lire la vraie erreur.
+  Mesure : `tools/design/{refscan,refmap,refpanels}.py`.
+- Branche `test/organ-design` (commit `2cdcf2d`) ; page de revue `/workspace/dl/pub/organ/`.
