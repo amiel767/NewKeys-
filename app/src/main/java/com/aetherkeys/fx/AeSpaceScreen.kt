@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -157,11 +158,11 @@ fun AeSpaceScreen(
             ),
         ),
     ) {
-        // ── LE MOT : « Æther » en clair, « Space » dans la teinte du preset, le
-        //    style en troisième. Le style suit le preset, comme la figure.
+        // ── LE MOT : « Space » dans la teinte du preset, le style ensuite. Pas de
+        //    « Æther » devant : le nom de l'effet EST « Space ». Le style suit le
+        //    preset, comme la figure.
         Text(
             buildAnnotatedString {
-                withStyle(SpanStyle(color = SPACE_INK)) { append("Æther") }
                 withStyle(SpanStyle(color = pal[0])) { append("Space") }
                 withStyle(SpanStyle(color = pal[2])) { append(style.label) }
             },
@@ -169,12 +170,43 @@ fun AeSpaceScreen(
             fontSize = 42.sp, fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui,
             letterSpacing = (-1).sp, maxLines = 1,
         )
-        Text(
-            "Version 1.0\naetherkeys",
-            Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 24.dp),
-            color = pal[1], fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
-            fontFamily = FxFonts.ui, lineHeight = 17.sp, textAlign = TextAlign.End,
-        )
+
+        // ── LA BARRE DE PRESET, EN HAUT À DROITE. Elle était dans le pied ; elle
+        //    remonte au même rang que le titre, à côté de la fermeture. Le pas à
+        //    pas la suit : il ne sert qu'à elle. À gauche du titre il serait
+        //    tombé sous le gros potard, qui commence à y=78.
+        Row(
+            Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SpacePresetPill(
+                preset = preset, modified = modified, pal = pal, open = dropOpen,
+                onClick = { dropOpen = !dropOpen; saveOpen = false },
+            )
+            Spacer(Modifier.width(4.dp))
+            SpaceFlatButton(AeFxIcons.STEP_PREV, pal[0], 26.dp, 18.dp) {
+                stepPreset(all, preset, -1)?.let(onPreset)
+            }
+            SpaceFlatButton(AeFxIcons.STEP_NEXT, pal[0], 26.dp, 18.dp) {
+                stepPreset(all, preset, 1)?.let(onPreset)
+            }
+            Spacer(Modifier.width(8.dp))
+            // Le NOM DU PRESET est écrit à gauche de SAVE, en clair : c'est la
+            // seule chose qu'on vient lire ici, et un libellé de champ la rendrait
+            // plus petite que la valeur.
+            Text(
+                preset + if (modified) " •" else "",
+                color = pal[1], fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                fontFamily = FxFonts.ui, maxLines = 1,
+            )
+            Spacer(Modifier.width(10.dp))
+            SpaceFlatText("SAVE", pal[3], saveOpen) { saveOpen = !saveOpen; dropOpen = false }
+            Spacer(Modifier.width(8.dp))
+            // La fermeture est PLATE et prend la teinte du preset : c'était une
+            // puce bombée, comme un bouton de matériel, ce que la référence n'a
+            // pas. Le retour a disparu — la fermeture suffit à sortir de la page.
+            SpaceFlatButton(AeFxIcons.CLOSE, pal[0], 30.dp, 16.dp, onClose)
+        }
 
         // ── LA COLONNE DE GAUCHE : MIX puis PRE-DELAY, deux anneaux fins.
         Column(
@@ -235,78 +267,13 @@ fun AeSpaceScreen(
             }
         }
 
-        // ── LE PIED : type de pièce, liste de presets, pas à pas, Save.
-        Row(
-            Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 14.dp)
-                .fillMaxWidth().padding(end = 24.dp).height(34.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("SPACE:", color = SPACE_INK, fontSize = 17.sp, fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                style.label, Modifier.width(130.dp), color = pal[2], fontSize = 17.sp,
-                fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui,
-            )
-            Spacer(Modifier.width(70.dp))
-            Text("PRESETS:", color = SPACE_INK, fontSize = 17.sp, fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui)
-            Spacer(Modifier.width(10.dp))
-            Row(
-                Modifier.width(250.dp).height(32.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = .35f))
-                    .border(
-                        2.dp,
-                        if (dropOpen) pal[0] else pal[0].copy(alpha = .45f),
-                        RoundedCornerShape(16.dp),
-                    )
-                    .clickable { dropOpen = !dropOpen; saveOpen = false }
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    preset + if (modified) " •" else "", Modifier.weight(1f),
-                    color = pal[1], fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = FxFonts.ui, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                FxIcon(AeFxIcons.CHEV_DOWN, size = 12.dp, color = pal[0])
-            }
-            Box(
-                Modifier.padding(start = 6.dp).size(26.dp, 30.dp)
-                    .clickable(remember { MutableInteractionSource() }, null) {
-                        stepPreset(all, preset, -1)?.let(onPreset)
-                    },
-                contentAlignment = Alignment.Center,
-            ) { FxIcon(AeFxIcons.STEP_PREV, size = 20.dp, color = pal[0]) }
-            Box(
-                Modifier.size(26.dp, 30.dp)
-                    .clickable(remember { MutableInteractionSource() }, null) {
-                        stepPreset(all, preset, 1)?.let(onPreset)
-                    },
-                contentAlignment = Alignment.Center,
-            ) { FxIcon(AeFxIcons.STEP_NEXT, size = 20.dp, color = pal[0]) }
-
-            Spacer(Modifier.weight(1f))
-            Box(
-                Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
-                    .background(if (saveOpen) pal[3].copy(alpha = .2f) else Color.Transparent)
-                    .border(2.dp, pal[3], RoundedCornerShape(16.dp))
-                    .clickable { saveOpen = !saveOpen; dropOpen = false }
-                    .padding(horizontal = 20.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "SAVE", color = pal[3], fontSize = 14.5.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = FxFonts.ui, letterSpacing = 1.sp,
-                )
-            }
-        }
-
-        // ── La liste des presets : AU-DESSUS du pied, pas dans son flux.
+        // ── La liste des presets : sous la barre du haut, dont elle descend.
         if (dropOpen) {
             Box(
                 Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { dropOpen = false },
             )
             Column(
-                Modifier.align(Alignment.BottomStart).padding(start = 306.dp, bottom = 52.dp)
+                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 108.dp)
                     .width(300.dp).heightIn(max = 240.dp).clip(RoundedCornerShape(18.dp))
                     .background(Color(0xF70E0E0E))
                     .border(2.dp, pal[0].copy(alpha = .5f), RoundedCornerShape(18.dp))
@@ -375,7 +342,7 @@ fun AeSpaceScreen(
                 Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { saveOpen = false },
             )
             Column(
-                Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 52.dp)
+                Modifier.align(Alignment.TopEnd).padding(end = 24.dp, top = 46.dp)
                     .width(280.dp).clip(RoundedCornerShape(18.dp))
                     .background(Color(0xF70E0E0E))
                     .border(2.dp, pal[3].copy(alpha = .55f), RoundedCornerShape(18.dp)).padding(12.dp),
@@ -440,14 +407,75 @@ fun AeSpaceScreen(
             }
         }
 
-        // ── Le retour et la fermeture, posés en haut à droite de la page. La page
-        //    remplit la fenêtre, elle n'a pas de bande d'en-tête pour les porter.
-        Row(Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            FxIconButton(AeFxIcons.BACK, onClick = onBack)
-            Spacer(Modifier.width(6.dp))
-            FxIconButton(AeFxIcons.CLOSE, onClick = onClose)
-        }
     }
+}
+
+/**
+ * LA PASTILLE DE PRESET, EN HAUT. Elle porte la teinte du preset, son nom, et le
+ * point qui dit qu'un réglage a bougé. Elle ne s'étire pas : c'est un bouton.
+ */
+@Composable
+private fun SpacePresetPill(
+    preset: String,
+    modified: Boolean,
+    pal: List<Color>,
+    open: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = .35f))
+            .border(2.dp, if (open) pal[0] else pal[0].copy(alpha = .45f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            preset + if (modified) " •" else "",
+            color = pal[1], fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            fontFamily = FxFonts.ui, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(8.dp))
+        FxIcon(AeFxIcons.CHEV_DOWN, size = 12.dp, color = pal[0])
+    }
+}
+
+/**
+ * UN BOUTON PLAT À LIBELLÉ. Même dessin que [SpaceFlatButton], pour l'action qui
+ * a besoin d'un mot plutôt que d'un glyphe. Un cadre mince dit l'état engagé.
+ */
+@Composable
+private fun SpaceFlatText(text: String, color: Color, on: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.height(28.dp).clip(RoundedCornerShape(8.dp))
+            .background(if (on) color.copy(alpha = .18f) else Color.Transparent)
+            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            fontFamily = FxFonts.ui, letterSpacing = 1.sp)
+    }
+}
+
+/**
+ * UN BOUTON PLAT DE LA PAGE. Rien qu'un glyphe, à la teinte du preset : pas de
+ * creux, pas d'ombre, pas de puce. Les commandes de l'écran sont ainsi du même
+ * dessin que les anneaux — c'est la demande, « en 2D comme l'interface ».
+ */
+@Composable
+private fun SpaceFlatButton(
+    icon: String,
+    color: Color,
+    side: Dp,
+    glyph: Dp,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier.size(side).clip(RoundedCornerShape(8.dp))
+            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { FxIcon(icon, size = glyph, color = color) }
 }
 
 /** Le pas à pas dans la liste : on boucle, comme la référence. */
@@ -565,25 +593,42 @@ fun AeSpaceSlotKnobs(
     modifier: Modifier = Modifier,
 ) {
     val ramp = palette?.colors ?: FxDesign.SPACE.palettes.values.first().colors
-    Column(
-        modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+    val cols = 3
+    val rows = (FxDesign.CARD_KEYS.size + cols - 1) / cols
+    // ── LA TAILLE SUIT LA CARTE ─────────────────────────────────────────────
+    // La carte est un carré dont le côté dépend de la fenêtre. Une taille figée
+    // de potard déborderait d'un carré court. On prend donc le plus grand disque
+    // qui entre, colonne par colonne ET rangée par rangée, et les libellés
+    // suivent proportionnellement — sinon un petit potard garde un gros texte.
+    BoxWithConstraints(
+        modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        FxDesign.CARD_KEYS.chunked(3).forEachIndexed { rowI, rowKeys ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                rowKeys.forEachIndexed { colI, key ->
-                    val spec = info.byKey[key] ?: return@forEachIndexed
-                    val idx = info.params.indexOfFirst { it.key == key }
-                    val col = ramp[(rowI * 3 + colI) % ramp.size]
-                    Box(Modifier.weight(1f)) {
-                        SpaceRingKnob(
-                            label = spec.name, spec = spec,
-                            value = values.getOrElse(idx) { spec.def },
-                            color = if (live) col else col.copy(alpha = .4f),
-                            size = 34.dp, knobSize = 34.dp, labelSp = 8.5f, valueSp = 8.5f,
-                            onChange = { onValue(idx, it) }, onReset = { onValue(idx, spec.def) },
-                        )
+        val gap = 4.dp
+        val textH = 26.dp
+        val byW = (maxWidth - gap * (cols - 1)) / cols
+        val byH = (maxHeight - gap * (rows - 1)) / rows - textH
+        val knob = minOf(byW, byH, 40.dp)
+        val f = (knob.value / 34f).coerceIn(.62f, 1.25f)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            FxDesign.CARD_KEYS.chunked(cols).forEachIndexed { rowI, rowKeys ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    rowKeys.forEachIndexed { colI, key ->
+                        val spec = info.byKey[key] ?: return@forEachIndexed
+                        val idx = info.params.indexOfFirst { it.key == key }
+                        val col = ramp[(rowI * cols + colI) % ramp.size]
+                        Box(Modifier.weight(1f)) {
+                            SpaceRingKnob(
+                                label = spec.name, spec = spec,
+                                value = values.getOrElse(idx) { spec.def },
+                                color = if (live) col else col.copy(alpha = .4f),
+                                size = knob, knobSize = knob,
+                                labelSp = 8.5f * f, valueSp = 8.5f * f,
+                                onChange = { onValue(idx, it) }, onReset = { onValue(idx, spec.def) },
+                            )
+                        }
                     }
+                    repeat(cols - rowKeys.size) { Box(Modifier.weight(1f)) }
                 }
             }
         }

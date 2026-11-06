@@ -93,6 +93,19 @@ object FxGeo {
 
     /** Décalage d'un emplacement depuis le bord gauche. */
     fun slotX(i: Int): Float = PAD + i * (CARD_W + GAP)
+
+    /**
+     * LA HAUTEUR QUI REND LA CARTE CARRÉE.
+     *
+     * La carte remplit toute la hauteur du corps. Elle est donc carrée quand le
+     * corps vaut exactement sa largeur. C'est le point bas de la fenêtre : en
+     * dessous, la carte deviendrait plus large que haute et se lirait comme une
+     * bannière. La fenêtre se réduit jusqu'ici, pas plus bas.
+     *
+     * UNE SEULE MARGE : le corps est en retrait à gauche, à droite et en bas,
+     * pas en haut — c'est l'en-tête qui tient lieu de marge haute.
+     */
+    const val CARD_SQUARE_H = HEAD + PAD + CARD_W
 }
 
 /**
@@ -104,6 +117,7 @@ object FxGeo {
 fun FxStage(
     modifier: Modifier = Modifier,
     scale: Float = 1f,
+    heightUnits: Float = FxGeo.H,
     content: @Composable () -> Unit,
 ) {
     val d = LocalDensity.current
@@ -111,7 +125,7 @@ fun FxStage(
     CompositionLocalProvider(
         LocalDensity provides Density(d.density * s, fontScale = 1f)
     ) {
-        Box(modifier.size(FxGeo.W.dp, FxGeo.H.dp)) { content() }
+        Box(modifier.size(FxGeo.W.dp, heightUnits.dp)) { content() }
     }
 }
 
@@ -121,9 +135,8 @@ fun FxStage(
  * la taille de la maquette.
  */
 @Composable
-fun rememberFitScale(availableW: Dp, availableH: Dp): Float {
-    val d = LocalDensity.current
+fun rememberFitScale(availableW: Dp, availableH: Dp, heightUnits: Float = FxGeo.H): Float {
     val w = availableW.value / FxGeo.W
-    val h = availableH.value / FxGeo.H
+    val h = availableH.value / heightUnits
     return minOf(w, h, 1f)
 }

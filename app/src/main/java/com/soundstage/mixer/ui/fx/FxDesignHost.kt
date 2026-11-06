@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.collectLatest
 import com.aetherkeys.fx.ArpState
 import com.aetherkeys.fx.FxDesign
@@ -107,9 +109,20 @@ fun FxDesignHost(
         contentAlignment = Alignment.Center,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // La hauteur de la fenêtre est réglable : la poignée du bas la fait
+            // glisser, et on la garde d'une ouverture à l'autre. Réduire la
+            // fenêtre réduit le corps, donc les cartes, qui deviennent carrées à
+            // la hauteur basse (FxGeo.CARD_SQUARE_H).
+            val ctx = LocalContext.current
+            val store = remember { FxWindowSizeStore(ctx) }
+            var heightUnits by remember { mutableFloatStateOf(store.load()) }
             // On garde la taille de la maquette : le facteur ne dépasse jamais 1.
-            val scale = rememberFitScale(maxWidth - 16.dp, maxHeight - 16.dp)
-            FxWindow(state = host.state(), actions = host.actions(onClose), scale = scale, arpState = host.arp)
+            val scale = rememberFitScale(maxWidth - 16.dp, maxHeight - 16.dp, heightUnits)
+            FxWindow(
+                state = host.state(), actions = host.actions(onClose), scale = scale,
+                arpState = host.arp, heightUnits = heightUnits,
+                onHeightChange = { heightUnits = it; store.save(it) },
+            )
         }
     }
 }
@@ -474,4 +487,18 @@ private class FxDesignModel(private val controller: FxController) {
 
     private fun designForEngine(engineId: Int): FxInfoD? =
         if (engineId == FxDesign.SPACE.id) FxDesign.SPACE else null
+}
+
+
+/**
+ * OÙ VIT LA HAUTEUR CHOISIE. Une préférence locale : elle n'appartient pas au
+ * projet, elle appartient à l'utilisateur et à son écran. On ne la range donc
+ * pas dans l'état de l'app (qui part dans le JSON d'un setlist), mais dans les
+ * préférences — la même place que les autres réglages d'affichage.
+ */
+private class FxWindowSizeStore(context: android.content.Context) {
+    private val prefs = context.getSharedPreferences("fx_window", android.content.Context.MODE_PRIVATE)
+    fun load(): Float = prefs.getFloat(KEY_H, com.aetherkeys.fx.FxGeo.H)
+    fun save(h: Float) = prefs.edit().putFloat(KEY_H, h).apply()
+    private companion object { const val KEY_H = "height_units" }
 }

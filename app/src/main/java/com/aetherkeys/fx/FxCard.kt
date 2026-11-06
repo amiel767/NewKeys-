@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -88,7 +89,10 @@ fun FxCard(
     )
     val p = (settle / 118f).coerceIn(0f, 1f)
 
-    Box(Modifier.width(FxGeo.CARD_W.dp).fillMaxHeight().clip(RoundedCornerShape(16.dp))) {
+    Box(
+        Modifier.width(FxGeo.CARD_W.dp).fillMaxHeight().testTag("fxcard")
+            .clip(RoundedCornerShape(16.dp)),
+    ) {
         // La corbeille, révélée par le haut. Elle suit le doigt.
         Box(
             Modifier.fillMaxWidth().height(150.dp).padding(top = 14.dp)

@@ -86,6 +86,27 @@ class FxDetachedCaptureTest {
         FxWindowState(slots = listOf(space(), null, null, arp())),
     )
 
+    /**
+     * LE RACK À LA HAUTEUR BASSE : la fenêtre est réduite jusqu'à ce que le
+     * corps égale la largeur d'une carte, donc les cartes sont CARRÉES. C'est le
+     * geste demandé — tirer le bord bas de la fenêtre vers le haut.
+     */
+    @Test
+    fun fx_rack_square() {
+        val h = com.aetherkeys.fx.FxGeo.CARD_SQUARE_H
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            Box(Modifier.size(891.dp, h.dp).background(Color(0xFF0B0F17))) {
+                FxWindow(
+                    state = FxWindowState(slots = listOf(space(), space(preset = "Plate"), null, arp())),
+                    actions = noop, heightUnits = h,
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(1400)
+        composeTestRule.onRoot().captureRoboImage("src/test/screenshots/fx_rack_square.png")
+    }
+
     /** Le rack plein, Space contourné : on voit les potards grisés et le voile. */
     @Test
     fun fx_full() = capture(

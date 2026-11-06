@@ -193,11 +193,22 @@ object FxDesign {
      * MOD et EQ à deux. Les largeurs sont celles de la maquette (160 pour le
      * panneau à quatre, 84 pour les autres).
      */
+    /**
+     * LES CINQ PANNEAUX DE RÉGLAGES, dans l'ordre où ils s'affichent.
+     *
+     * VEIL EN TÊTE. C'est le panneau qui décide de la couleur de la queue, donc
+     * celui qu'on ouvre en premier.
+     *
+     * LES TITRES SONT DES IMAGES, SAUF EQ. Un seul mot, anglais, celui qu'un
+     * ingénieur emploierait : VEIL pour ce que la queue absorbe, SPREAD pour la
+     * diffusion, DRIFT pour la modulation, BODY pour la masse de la pièce. EQ
+     * garde son nom — c'est le seul repère que tout le monde cherche.
+     */
     val SPACE_GROUPS = listOf(
-        FxGroup("DAMPING", listOf("hf", "hs", "bf", "bm"), 160f),
-        FxGroup("SHAPE", listOf("size", "att"), 84f),
-        FxGroup("DIFF", listOf("early", "late"), 84f),
-        FxGroup("MOD", listOf("rate", "depth"), 84f),
+        FxGroup("VEIL", listOf("hf", "hs", "bf", "bm"), 160f),
+        FxGroup("SPREAD", listOf("early", "late"), 84f),
+        FxGroup("DRIFT", listOf("rate", "depth"), 84f),
+        FxGroup("BODY", listOf("size", "att"), 84f),
         FxGroup("EQ", listOf("hc", "lc"), 84f),
     )
 

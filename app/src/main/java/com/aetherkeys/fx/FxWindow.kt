@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +64,8 @@ fun FxWindow(
     modifier: Modifier = Modifier,
     scale: Float = 1f,
     arpState: ArpState? = null,
+    heightUnits: Float = FxGeo.H,
+    onHeightChange: (Float) -> Unit = {},
 ) {
     val inEffect = state.openEffect != null
     // Le titre d'une page reste le NOM de l'effet, tel quel. Le preset vit dans
@@ -90,7 +93,7 @@ fun FxWindow(
         }
     }
 
-    FxStage(modifier = modifier, scale = scale) {
+    FxStage(modifier = modifier, scale = scale, heightUnits = heightUnits) {
         Box(
             Modifier.fillMaxSize().clip(RoundedCornerShape(FxGeo.RADIUS.dp))
                 .background(Brush.verticalGradient(listOf(FxC.winTop, FxC.winBot))),
@@ -126,7 +129,58 @@ fun FxWindow(
                     }
                 }
             }
+            // ── LA POIGNÉE DE HAUTEUR ───────────────────────────────────────
+            // Elle est posée sur le bord BAS et se tire vers le bas pour réduire.
+            // C'est le geste que la fenêtre attendait : réduire la fenêtre fait
+            // rétrécir le corps, donc les cartes, qui sont carrées quand le corps
+            // vaut leur largeur (voir FxGeo.CARD_SQUARE_H). Aucun câblage de
+            // « mode carré » : la seule chose qui bouge est la hauteur.
+            FxResizeHandle(
+                heightUnits = heightUnits,
+                onHeightChange = onHeightChange,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
+    }
+}
+
+/**
+ * LA POIGNÉE DE REDIMENSIONNEMENT, sur le bord bas de la fenêtre.
+ *
+ * Un geste vers le BAS AGRANDIT (on tire le bord), vers le HAUT RÉDUIT — c'est
+ * le sens naturel d'une poignée de fenêtre. La course est bornée entre la hauteur
+ * « carte carrée » et celle de la maquette : au-delà, la fenêtre dépasserait son
+ * cadre ; en deçà, la carte serait plus large que haute.
+ *
+ * La conversion pixels -> unités passe par la densité LOCALE, qui porte déjà le
+ * facteur d'échelle de la scène. Lire la densité de l'écran donnerait un geste
+ * faux d'un facteur `scale`.
+ */
+@Composable
+private fun FxResizeHandle(
+    heightUnits: Float,
+    onHeightChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val d = LocalDensity.current
+    Box(
+        modifier
+            .padding(bottom = 3.dp)
+            .size(width = 54.dp, height = 12.dp)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { change, dy ->
+                    change.consume()
+                    onHeightChange(
+                        (heightUnits + dy / d.density).coerceIn(FxGeo.CARD_SQUARE_H, FxGeo.H),
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF39435A)),
+        )
     }
 }
 
