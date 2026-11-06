@@ -46,7 +46,7 @@ private fun reg(c: AeCtl, off: Int) = (0..8).joinToString("") { (if (it == 2 || 
 private fun BoxScope.Rail(x: Number, flip: Boolean) {
     val sh = RoundedCornerShape(topStart = if (flip) 0.su() else 24.su(), topEnd = if (flip) 24.su() else 0.su())
     Box(
-        Modifier.at(x, 0, 46, 460).clip(sh).aeWood(if (flip) Color(0xFF6A3D1C) else Color(0xFF7A4A24), if (flip) 9 else 4)
+        Modifier.at(x, 0, 46, 460).clip(sh).aeWood(Color(0xFF6A3A20), if (flip) 9 else 4)
             .drawBehind {
                 val ex = if (flip) 0f else size.width
                 drawLine(Color(0x33FFFFFF), Offset(ex, 0f), Offset(ex, size.height), 1.5f)
@@ -59,7 +59,7 @@ private fun BoxScope.Rail(x: Number, flip: Boolean) {
 private fun Panel(x: Number, y: Number, w: Number, h: Number, r: Number = 10) {
     val sh = RoundedCornerShape(r.su())
     Box(
-        Modifier.at(x, y, w, h).clip(sh).aeWood(Color(0xFF4E2E12), (x.toInt() / 7) + 3)
+        Modifier.at(x, y, w, h).clip(sh).aeWood(Color(0xFF4A2815), (x.toInt() / 7) + 3)
             .border(1.su(), Color(0x33000000), sh),
     )
 }
@@ -84,7 +84,7 @@ private fun Caption(text: String, x: Number, y: Number, w: Number) {
 fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     Box(Modifier.fillMaxSize().drawBehind {
         // Smooth lacquered walnut: the cabinet finish, not raw timber.
-        drawWood(Color(0xFF7A4A24), 4)
+        drawWood(Color(0xFF6A3A20), 4)
         // Soft key light from the upper left, so the grain survives instead of washing into a
         // flat tint.
         drawRect(Brush.radialGradient(listOf(Color(0x1E7FD4EE), Color.Transparent), center = Offset(size.width * 0.2f, -size.height * 0.15f), radius = size.width * 0.75f))

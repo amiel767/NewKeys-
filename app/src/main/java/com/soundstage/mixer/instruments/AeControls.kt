@@ -174,14 +174,16 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
         Canvas(Modifier.size(size.su())) {
             val d = this.size.minDimension
             val r = d / 2f
+            // Dark metal, lit once from the upper left. The previous version had three grey stops
+            // across the face plus a hard dark ring, which read as a lit rim around every knob.
             drawCircle(
-                Brush.linearGradient(
-                    listOf(Color(0xFF767B84), Color(0xFF2C3037), Color(0xFF4E535C)),
-                    start = Offset(0f, 0f), end = Offset(d, 0f),
+                Brush.radialGradient(
+                    listOf(Color(0xFF3C4148), Color(0xFF23262C), Color(0xFF14161A)),
+                    center = Offset(d * 0.34f, d * 0.30f), radius = d * 0.8f,
                 ),
                 r, this.center,
             )
-            drawCircle(Color(0x55000000), r * 0.99f, this.center, style = Stroke(d * 0.035f))
+            drawArc(Color(0x26FFFFFF), 195f, 150f, false, Offset(r * 0.2f, r * 0.2f), Size(d * 0.8f, d * 0.8f), style = Stroke(d * 0.028f, cap = StrokeCap.Round))
             drawPlasticKnob(-135f + 270f * c.v(idx), tint = Color(0xFF212128))
         }
         AeT(label, 8, AeC.goldDim, Modifier.fillMaxWidth().padding(top = 2.su()), font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center)
@@ -408,22 +410,26 @@ fun AeRocker(c: AeCtl, idx: Int, label: String, x: Number, y: Number, w: Number)
             drawRoundRect(Color(0x1EFFFFFF), Offset(3f * u, 26f * u), Size(size.width - 6f * u, 1.5f * u), CornerRadius(1f * u))
             // Tab: moulded black plastic, its own top lip lit and its base in shadow.
             drawRoundRect(
-                Brush.verticalGradient(listOf(Color(0xFF3E4149), Color(0xFF1B1D22), Color(0xFF0A0B0E))),
+                Brush.verticalGradient(listOf(Color(0xFF2E3238), Color(0xFF17191D), Color(0xFF0A0B0E))),
                 Offset(3f * u, 3f * u + dy), Size((ww - 6f) * u, 24f * u), CornerRadius(5f * u),
             )
             drawRoundRect(Color(0x26FFFFFF), Offset(5f * u, 4.4f * u + dy), Size((ww - 10f) * u, 1.6f * u), CornerRadius(1f * u))
             drawRoundRect(Color(0x66000000), Offset(5f * u, 25f * u + dy), Size((ww - 10f) * u, 1.6f * u), CornerRadius(1f * u))
-            // Lamp: real light, so it throws a halo when lit and reads as dark glass when not.
+            // Lamp: dark glass with a small amber core when lit. The two wide orange halos that
+            // used to sit here (r 9 and 14 around a 3.4 lens) spilled over the whole tab and read
+            // as a smudge, which is the "ugly light" on the black switches.
             val lx = ww / 2f
             val ly = 24f * u
-            if (on) {
-                drawCircle(Color(0x66FFB020), 9f * u, Offset(lx, ly))
-                drawCircle(Color(0x33FFD070), 14f * u, Offset(lx, ly))
-            }
-            drawCircle(Brush.radialGradient(listOf(Color(0xFFFFE6A8), if (on) Color(0xFFFFC24A) else Color(0xFF241A08)), center = Offset(lx - 0.8f * u, ly - 0.8f * u), radius = 3.4f * u), 3.4f * u, Offset(lx, ly))
-            drawCircle(Color(0x55000000), 3.4f * u, Offset(lx, ly), style = Stroke(0.7f * u))
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(if (on) Color(0xFFFFD27A) else Color(0xFF39333B), if (on) Color(0xFFDE8A1C) else Color(0xFF141317)),
+                    center = Offset(lx - 0.5f * u, ly - 0.5f * u), radius = 2.4f * u,
+                ),
+                2.4f * u, Offset(lx, ly),
+            )
+            drawCircle(Color(0x44000000), 2.4f * u, Offset(lx, ly), style = Stroke(0.6f * u))
         }
-        AeT(label, 8, if (on) Color(0xFFFFD98A) else AeC.goldDim, Modifier.padding(bottom = 7.su()), AeFonts.plate, FontWeight.ExtraBold)
+        AeT(label, 8, if (on) AeC.gold else AeC.goldDim, Modifier.padding(bottom = 7.su()), AeFonts.plate, FontWeight.ExtraBold)
     }
 }
 

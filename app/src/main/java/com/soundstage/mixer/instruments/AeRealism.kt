@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.cos
+import kotlin.random.Random
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -36,47 +37,26 @@ internal fun hash(x: Int, y: Int, seed: Int): Float {
 }
 
 /**
- * Smooth wood, the finish of an organ cabinet rather than raw timber.
- *
- * A cabinet panel is sanded and lacquered: the grain is still there but it is a long, soft
- * variation in the surface, not a set of drawn lines, and there are no open pores. So this is a
- * base tint, a handful of very wide low-contrast streaks, and a sheen across the top third. The
- * earlier version drew 900 pores and hard grain lines, which read as plywood.
+ * Walnut, the finish the consoles already used: a horizontal gradient with fine vertical grain
+ * lines. Restored as it was. A lacquered cabinet panel is smooth — the attempt at "realistic"
+ * grain (hundreds of pores and hard lines) read as plywood, which is what the user rejected.
  */
-internal fun DrawScope.drawWood(base: Color, seed: Int = 7) {
+internal fun DrawScope.drawWood(base: Color, seed: Int = 4) {
     val w = size.width
     val h = size.height
     if (w <= 0f || h <= 0f) return
-    drawRect(Brush.verticalGradient(listOf(lerp(base, Color.White, 0.07f), base, lerp(base, Color.Black, 0.15f))))
-    // Grain: a few wide, soft streaks. Two overlapping passes at different widths give the
-    // irregularity of real grain without any line that reads as drawn.
-    var i = 0
-    while (i < 26) {
-        val x = hash(i, 5, seed) * w
-        val wide = 14f + hash(i, 6, seed) * 46f
-        val dark = hash(i, 7, seed) > 0.5f
-        val c = if (dark) lerp(base, Color.Black, 0.30f) else lerp(base, Color.White, 0.16f)
-        drawRect(
-            Brush.horizontalGradient(
-                listOf(c.copy(alpha = 0f), c.copy(alpha = 0.055f + hash(i, 8, seed) * 0.05f), c.copy(alpha = 0f)),
-                startX = x - wide, endX = x + wide,
-            ),
-            Offset(x - wide, 0f), Size(wide * 2f, h),
+    drawRect(Brush.horizontalGradient(listOf(lerp(base, Color.Black, 0.30f), base, lerp(base, Color.Black, 0.42f))))
+    val r = Random(seed)
+    repeat(150) {
+        val x = r.nextFloat() * w
+        drawLine(
+            Color.Black.copy(alpha = 0.04f + r.nextFloat() * 0.12f),
+            Offset(x, 0f), Offset(x + r.nextFloat() * 6f - 3f, h), 1f + r.nextFloat() * 2f,
         )
-        i++
     }
-    // Sheen: lacquer reflects the room, strongest near the top edge and gone by mid panel.
-    drawRect(
-        Brush.verticalGradient(
-            0f to Color.White.copy(alpha = 0.05f),
-            0.16f to Color.White.copy(alpha = 0.022f),
-            0.5f to Color.Transparent,
-            startY = 0f, endY = h,
-        ),
-    )
 }
 
-internal fun Modifier.aeWood(base: Color = Color(0xFF5A3218), seed: Int = 7): Modifier = drawBehind { drawWood(base, seed) }
+internal fun Modifier.aeWood(base: Color = Color(0xFF6A3A20), seed: Int = 4): Modifier = drawBehind { drawWood(base, seed) }
 
 /**
  * Turned plastic knob, filling the current canvas. [angleDeg] is the pointer angle from vertical.
