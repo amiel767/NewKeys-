@@ -15,6 +15,7 @@ qu'un agent qui arrive ne « finisse » pas du code mort : plusieurs passes ont 
 | `VirtualPianoKeyboard`, `SplitterKeyboard` | supprimés (ancien clavier) |
 | `KeyboardLayerMapper` | n'existe plus (seul `KeyPositionMapper` subsiste) |
 | `loadSoundfontToSlot` | nom de brief inexistant → `loadSoundFontForSlot` |
+| `FxOrb.kt` (`FxOrb`) | **plus appelé** depuis que la carte Slots porte les potards du preset |
 | FX hors interface : `fx_piano.h`, `fx_sax.h`, `audio_engine.cpp`, packs `.bin` | moteur audio, tenus par la conversation Æther Piano sur `main` |
 | `ui/settings/MidiMappingPage.kt`, `MappingRegistry`, `MappingCatalog` | hors FX |
 | `ui/setlists/*`, `ui/sheets/*` | autres modules |

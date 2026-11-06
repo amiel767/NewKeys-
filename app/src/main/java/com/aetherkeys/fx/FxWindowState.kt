@@ -77,9 +77,26 @@ interface FxWindowActions {
     /** Régler un paramètre de l'effet ouvert, par son index. */
     fun setValue(index: Int, value: Float)
 
+    /**
+     * Régler un paramètre depuis la VIGNETTE d'une carte, par l'index de son
+     * emplacement. La carte se règle sans être ouverte : c'est ce qui remplace
+     * l'orbe décorative.
+     */
+    fun setSlotValue(slot: Int, index: Int, value: Float) {}
+
     /** Choisir un preset de l'effet ouvert. */
     fun pickPreset(name: String)
 
     /** Ouvrir la feuille de nommage d'un preset utilisateur. */
     fun beginSave()
+
+    /**
+     * Enregistrer les réglages courants sous un nom d'utilisateur. Le nom est
+     * celui que l'écran a saisi ; l'hôte le range avec les autres presets de
+     * l'effet ouvert et le sélectionne.
+     */
+    fun saveUserPreset(name: String) {}
+
+    /** Supprimer un preset utilisateur. Sans effet sur les presets d'usine. */
+    fun deleteUserPreset(name: String) {}
 }

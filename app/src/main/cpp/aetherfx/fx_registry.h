@@ -35,12 +35,21 @@ inline const EffectInfo& info(int id) {
     std::vector<EffectInfo> v(FX_COUNT);
     using C = Curve;
     v[FX_SPACE] = {"Aether Space", "Reverb",
-      {{"Size", 0, 100, "%", 0, .62f, C::Linear}, {"Decay", .4f, 8, "s", 1, .7f, C::Linear}, {"Pre-delay", 0, 120, "ms", 0, .2f, C::Linear},
-       {"Damp", 1, 12, "kHz", 1, .45f, C::Linear}, {"Width", 0, 100, "%", 0, .8f, C::Linear}, {"Mix", 0, 100, "%", 0, .35f, C::Linear},
-       {"Diffuse", 0, 100, "%", 0, .5f, C::Linear}},
-      {{"Hall", {.62f, .7f, .2f, .45f, .8f, .35f, .5f}}, {"Plate", {.4f, .5f, .1f, .7f, .9f, .3f, .7f}}, {"Room", {.25f, .3f, .05f, .5f, .6f, .25f, .3f}},
-       {"Cathedral", {.95f, .95f, .35f, .3f, 1, .45f, .8f}}, {"Shimmer", {.7f, .85f, .25f, .2f, 1, .5f, .9f}}, {"Chamber", {.35f, .4f, .08f, .55f, .7f, .28f, .45f}},
-       {"Bloom", {.8f, .8f, .3f, .35f, .95f, .42f, 1}}, {"Infinite", {1, 1, .4f, .25f, 1, .6f, .95f}}}};
+      {{"Mix", 0, 100, "%", 0, .34f, C::Linear}, {"Pre-delay", 0, 200, "ms", 0, .10f, C::Linear}, {"Decay", .1f, 30, "s", 2, .13f, C::Linear},
+       {"HighFreq", 1000, 16000, "Hz", 0, .33f, C::Linear}, {"HighShelf", -24, 0, "dB", 1, .50f, C::Linear}, {"BassFreq", 100, 1000, "Hz", 0, .67f, C::Linear},
+       {"BassMult", .5f, 3, "X", 2, .40f, C::Linear}, {"Size", 0, 100, "%", 0, 1.f, C::Linear}, {"Attack", 0, 100, "%", 0, .50f, C::Linear},
+       {"Early", 0, 100, "%", 0, 1.f, C::Linear}, {"Late", 0, 100, "%", 0, 1.f, C::Linear}, {"Rate", .1f, 10, "Hz", 2, .25f, C::Linear},
+       {"Depth", 0, 100, "%", 0, .38f, C::Linear}, {"HighCut", 1000, 20000, "Hz", 0, .37f, C::Linear}, {"LowCut", 10, 500, "Hz", 0, 0.f, C::Linear}},
+      {{"Shimmer", {.38f, .14f, .2467f, .5333f, .50f, .6667f, .40f, .82f, .62f, .70f, .80f, .1111f, .46f, .7895f, .3469f}},
+       {"Chamber", {.30f, .07f, .0862f, .3667f, .50f, .4444f, .46f, .48f, .40f, .60f, .55f, .0505f, .22f, .5789f, .1633f}},
+       {"Room", {.24f, .03f, .0336f, .28f, .75f, .3556f, .32f, .30f, .55f, .80f, .40f, .0253f, .12f, .4211f, .1020f}},
+       {"Hall", {.34f, .10f, .1304f, .3333f, .50f, .6667f, .40f, 1.f, .50f, 1.f, 1.f, .2455f, .38f, .3684f, 0.f}},
+       {"Plate", {.32f, .05f, .0706f, .6667f, .8333f, .2778f, .20f, .55f, .72f, .90f, .70f, .0707f, .18f, .7368f, .2653f}},
+       {"Cathedral", {.42f, .24f, .4181f, .2133f, .25f, .7778f, .64f, .96f, .25f, .50f, .90f, .0303f, .30f, .3158f, .2245f}},
+       {"Spring", {.28f, .02f, .0572f, .44f, .6667f, .3889f, .32f, .40f, .80f, .70f, .35f, .3131f, .52f, .5f, .2857f}},
+       {"Cloud", {.48f, .30f, .2980f, .1733f, .1667f, .6111f, .52f, .90f, .18f, .40f, 1.f, .0808f, .64f, .2895f, .2041f}},
+       {"Infinite", {.45f, .40f, .6980f, .2f, .1667f, .6667f, .72f, 1.f, .3f, .5f, 1.f, .0707f, .70f, .4737f, .4082f}},
+       {"Bloom", {.42f, .30f, .2800f, .24f, .25f, .6111f, .56f, .95f, .35f, 1.f, .6f, .0505f, .60f, .2632f, .3061f}}}};
     const float dt[8] = {.15f, .9f, .3f, .7f, .45f, .5f, .6f, .3f};
     std::vector<ParamDesc> ep;
     static const char* tn[4] = {"Time 1", "Time 2", "Time 3", "Time 4"}; static const char* ln[4] = {"Level 1", "Level 2", "Level 3", "Level 4"};

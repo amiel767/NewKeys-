@@ -54,8 +54,8 @@ import androidx.compose.ui.unit.sp
  *    version utilisait un fond sombre — elle se lisait comme un trou, pas comme
  *    une carte posée sur la fenêtre.
  * 2. LA VIGNETTE EST GRANDE. Elle prend TOUT l'espace restant entre le nom et le
- *    pied (`weight(1f)`). C'est elle qu'on regarde : pour Space c'est l'orbe,
- *    pour l'Arpeggiator ses pas, pour les autres la courbe.
+ *    pied (`weight(1f)`). C'est elle qu'on regarde : pour Space ce sont ses six
+ *    potards, pour l'Arpeggiator ses pas, pour les autres la courbe.
  * 3. LE PIED MONTRE LE PRESET. Une pastille, puis le nom du preset — pas le type,
  *    qui est déjà écrit en haut.
  *
@@ -72,6 +72,7 @@ fun FxCard(
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
+    onValue: (Int, Float) -> Unit = { _, _ -> },
 ) {
     var dy by remember { mutableFloatStateOf(0f) }
     var hot by remember { mutableStateOf(false) }
@@ -152,7 +153,14 @@ fun FxCard(
                     .background(Color(0xFF12161F)),
             ) {
                 when {
-                    info.space -> FxOrb(vals = vals, palette = palette, live = on, scale = .78f)
+                    // La carte ne porte plus d'orbe : elle porte les six potards du preset.
+                    info.space -> AeSpaceSlotKnobs(
+                        info = info,
+                        values = vals,
+                        palette = palette,
+                        live = on,
+                        onValue = onValue,
+                    )
                     info.kind == FxKindD.MIDI -> FxMiniSteps(info.accent, on)
                     else -> FxMiniGraph(info.type, info.accent, on)
                 }

@@ -71,6 +71,27 @@ fun FxEffectPage(
         FxArpPage(fx, arp)
         return
     }
+    // ── SPACE A SON PROPRE ÉCRAN ────────────────────────────────────────────
+    // La page générique ci-dessous range les réglages en cellules ; Space, lui,
+    // a le sien : le gros potard vivant, les groupes de la référence, la liste
+    // de presets. La grille de cellules n'est donc plus ce que Space affiche.
+    if (fx.space) {
+        val slot = state.slots.firstOrNull { it?.info?.id == fx.id }
+        AeSpaceScreen(
+            fx = fx,
+            values = slot?.values ?: fx.params.map { it.def },
+            presetName = state.presetName,
+            userNames = state.userPresets[fx.id] ?: emptyList(),
+            custom = state.custom,
+            onValue = { i, v -> actions.setValue(i, v) },
+            onPreset = { actions.pickPreset(it) },
+            onSave = { actions.saveUserPreset(it) },
+            onDeleteUser = { actions.deleteUserPreset(it) },
+            onBack = { actions.closePage() },
+            onClose = onClose,
+        )
+        return
+    }
     val values = state.slots.firstOrNull { it?.info?.id == fx.id }?.values ?: fx.params.map { it.def }
     val preset = state.presetName ?: fx.firstPreset
     val pal = preset?.let { fx.palettes[it] } ?: fx.palettes[fx.firstPreset]

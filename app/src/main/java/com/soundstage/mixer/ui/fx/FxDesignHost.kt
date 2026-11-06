@@ -138,6 +138,9 @@ private class FxDesignModel(private val controller: FxController) {
     private val presets = mutableStateMapOf<Int, String?>()
     private val user = mutableStateMapOf<Int, SnapshotStateList<String>>()
 
+    /** Les valeurs enregistrées d'un preset utilisateur, par effet puis par nom. */
+    private val userValues = mutableStateMapOf<Int, Map<String, List<Float>>>()
+
     private var openId by mutableStateOf<Int?>(null)
     private var catalog by mutableStateOf<FxKindD?>(null)
     private var custom by mutableStateOf(false)
@@ -305,17 +308,33 @@ private class FxDesignModel(private val controller: FxController) {
             touch()
         }
 
+        override fun setSlotValue(slot: Int, index: Int, value: Float) {
+            val id = slotIds.getOrNull(slot) ?: return
+            if (id < 0) return
+            val v = vals(id)
+            if (index !in v.indices) return
+            v[index] = value.coerceIn(0f, 1f)
+            custom = true
+            // La vignette de la carte règle le MÊME tableau que la page : régler
+            // depuis la carte puis ouvrir l'effet ne doit pas montrer deux états.
+            val engine = engineSlot(slot)
+            if (engine >= 0 && index < engineParamCount()) {
+                controller.setEffectParam(engine, index, v[index])
+            }
+            touch()
+        }
+
         override fun pickPreset(name: String) {
             val id = openId ?: return
             val info = infoOf(id) ?: return
-            val table = info.presets[name]
+            val table = info.presets[name] ?: userValues[id]?.get(name)
             if (table != null) {
                 val v = vals(id)
                 table.forEachIndexed { i, x -> if (i < v.size) v[i] = x }
                 val slot = slotIds.indexOf(id)
                 val engine = if (slot >= 0) engineSlot(slot) else -1
+                val index = info.presets.keys.indexOf(name)
                 if (engine >= 0) {
-                    val index = info.presets.keys.indexOf(name)
                     if (index >= 0 && index < enginePresetCount()) controller.applyPreset(engine, index)
                     else pushAll(id, slot)
                 }
@@ -329,6 +348,27 @@ private class FxDesignModel(private val controller: FxController) {
         // le bouton Save est rendu et cliquable, mais n'ouvre rien. À brancher
         // quand le composant de saisie sera porté.
         override fun beginSave() {}
+
+        override fun saveUserPreset(name: String) {
+            val id = openId ?: return
+            val clean = name.trim().ifEmpty { "User ${(user[id]?.size ?: 0) + 1}" }
+            // Un preset utilisateur est une copie des réglages courants. Le nom
+            // est unique : réenregistrer sous le même nom met à jour au lieu de
+            // créer un doublon, sinon la liste se remplit de copies identiques.
+            user.getOrPut(id) { mutableStateListOf() }.let { if (clean !in it) it.add(clean) }
+            userValues[id] = (userValues[id] ?: emptyMap()) + (clean to vals(id).toList())
+            presets[id] = clean
+            custom = false
+            touch()
+        }
+
+        override fun deleteUserPreset(name: String) {
+            val id = openId ?: return
+            user[id]?.remove(name)
+            userValues[id] = (userValues[id] ?: emptyMap()) - name
+            if (presets[id] == name) presets[id] = infoOf(id)?.presets?.keys?.firstOrNull()
+            touch()
+        }
     }
 
     /** Le premier emplacement libre du bon genre : 0..2 pour l'audio, 3 pour le MIDI. */

@@ -153,6 +153,7 @@ private fun FxRack(state: FxWindowState, actions: FxWindowActions) {
                     onToggle = { actions.toggle(i) },
                     onOpen = { actions.open(slot.info.id) },
                     onRemove = { actions.remove(i) },
+                    onValue = { index, value -> actions.setSlotValue(i, index, value) },
                 )
             } else {
                 val midi = i >= FxDesign.MAX_AUDIO

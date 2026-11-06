@@ -1,0 +1,467 @@
+Title: Shared Conversation - DeepSeek
+
+URL Source: https://chat.deepseek.com/share/wm3ik2nshn39my0g01
+
+Markdown Content:
+package com.soundstage.mixer.space 
+
+ * ÆTHER SPACE — reverb panel, faithful to AetherSpacePreview.jsx. Design stage: 891 × 411 dp, scaled to any container.
+ *
+ * BEHAVIOUR (short brief)
+ * - Knobs: the thin ring + line is ours. Drag up/down = change (full range ≈ 150 dp), double tap = back to the preset value.
+ * Colour and glow follow the value: low = dim muted ring, high = bright saturated ring with a wide glow.
+ * - Big DECAY knob: drag = decay, tap = fire the space (ripples + energy burst). It is always alive (slow breathing),
+ * and its energy rises on fire and falls with the decay time. Each preset carries one of 8 CIRCULAR designs:
+ * Hall (thick rings), Chamber (rotating dashed rings), Room (nested rounded squares), Shimmer (rings of orbiting stars),
+ * Plate (polar dot grid with a radial wave), Cathedral (rose-window petals), Spring (circular coil), Cloud (rings of soft glows).
+ * - Changing preset: values, the 5-colour palette and the design slide (values and colours ease, designs cross-fade).
+ * - PRESETS: dropdown (FACTORY then USER), ◀ ▶ step through the list. A "•" after the name = unsaved changes.
+ * - SAVE: opens a small name field; the preset joins the USER list (with a × to delete it) and becomes the current one.
+ * - Engine hook: SpaceController(onParam = { key, value -> ... }) gets every change (also on preset load, key by key).
+ * onFire is called on tap of the big knob (audition). onUserPresets lets you persist the USER list.
+ * - Resources: 4 vector drawables (res/drawable): ic_space_prev, ic_space_next, ic_space_dropdown, ic_space_close.
+ * Optional: put a bold rounded font (Poppins / Futura-like) in SpaceFont below.
+ */
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+private val SpaceFont: FontFamily = FontFamily.SansSerif 
+
+enum class SpaceStyle(val label: String) { Shimmer("Shimmer"), Chamber("Chamber"), Room("Room"), Hall("Hall"), Plate("Plate"), Cathedral("Cathedral"), Spring("Spring"), Cloud("Cloud") }
+
+data class SpaceParam(val key: String, val label: String, val min: Float, val max: Float, val unit: String, val decimals: Int) {
+ fun norm(v: Float) = ((v - min) / (max - min)).coerceIn(0f, 1f)
+ fun fromNorm(n: Float) = min + n.coerceIn(0f, 1f) * (max - min)
+ fun format(v: Float) = "%.${decimals}f %s".format(v, unit)
+}
+
+object SpaceSpec {
+ val all = listOf(
+ SpaceParam("mix", "MIX", 0f, 100f, "%", 1), SpaceParam("pre", "PREDELAY", 0f, 200f, "ms", 2), SpaceParam("decay", "DECAY", 0.1f, 30f, "s", 2),
+ SpaceParam("hf", "HighFreq", 1000f, 16000f, "Hz", 0), SpaceParam("hs", "HighShelf", -24f, 0f, "dB", 2), SpaceParam("bf", "BassFreq", 100f, 1000f, "Hz", 0),
+ SpaceParam("bm", "BassMult", 0.5f, 3f, "X", 2), SpaceParam("size", "Size", 0f, 100f, "%", 1), SpaceParam("att", "Attack", 0f, 100f, "%", 1),
+ SpaceParam("early", "Early", 0f, 100f, "%", 1), SpaceParam("late", "Late", 0f, 100f, "%", 1), SpaceParam("rate", "Rate", 0.1f, 10f, "Hz", 2),
+ SpaceParam("depth", "Depth", 0f, 100f, "%", 1), SpaceParam("hc", "HighCut", 1000f, 20000f, "Hz", 0), SpaceParam("lc", "LowCut", 10f, 500f, "Hz", 0)
+ )
+ val byKey = all.associateBy { it.key }
+ 
+ val groups = listOf(Triple("DAMPING", listOf("hf", "hs", "bf", "bm"), 160), Triple("SHAPE", listOf("size", "att"), 84), Triple("DIFF", listOf("early", "late"), 84), Triple("MOD", listOf("rate", "depth"), 84), Triple("EQ", listOf("hc", "lc"), 84))
+}
+
+data class SpacePreset(val id: String, val name: String, val style: SpaceStyle, val palette: List<Color>, val values: Map<String, Float>, val user: Boolean = false)
+
+object SpacePresets {
+ private fun p(i: Int, n: String, s: SpaceStyle, pal: List<Long>, v: List<Float>) =
+ SpacePreset("f$i", n, s, pal.map { Color(it) }, SpaceSpec.all.mapIndexed { k, sp -> sp.key to v[k] }.toMap())
+ val factory = listOf(
+ p(0, "Space Shimmer", SpaceStyle.Shimmer, listOf(0xFFFF3FA4, 0xFFFF6FB8, 0xFFE07BFF, 0xFF9D7CFF, 0xFF6C8CFF), listOf(38f, 28f, 7.4f, 9500f, -9f, 600f, 1.2f, 82f, 62f, 70f, 80f, 1.1f, 46f, 16000f, 180f)),
+ p(1, "Space Chamber", SpaceStyle.Chamber, listOf(0xFF27E0D4, 0xFF2BC4E8, 0xFF3C9CF0, 0xFF5D7CFF, 0xFF7C6CFF), listOf(30f, 14f, 2.6f, 6500f, -12f, 500f, 1.4f, 48f, 40f, 60f, 55f, 0.6f, 22f, 12000f, 90f)),
+ p(2, "Space Room", SpaceStyle.Room, listOf(0xFFFFB347, 0xFFFF9A3C, 0xFFFF7A3A, 0xFFF2553E, 0xFFC93B4A), listOf(24f, 6f, 1.1f, 5200f, -6f, 420f, 1.1f, 30f, 55f, 80f, 40f, 0.35f, 12f, 9000f, 60f)),
+ p(3, "Space Hall", SpaceStyle.Hall, listOf(0xFFB34BFF, 0xFF8E5BFF, 0xFF6D6CFF, 0xFF4F8BFF, 0xFF27C4FF), listOf(34f, 20f, 4f, 6000f, -12f, 700f, 1.5f, 100f, 50f, 100f, 100f, 2.53f, 38f, 8000f, 10f)),
+ p(4, "Space Plate", SpaceStyle.Plate, listOf(0xFFCFE3FF, 0xFFA9C8F5, 0xFF86AEE8, 0xFF6E94DA, 0xFF5C7BC8), listOf(32f, 10f, 2.2f, 11000f, -4f, 350f, 1f, 55f, 72f, 90f, 70f, 0.8f, 18f, 15000f, 140f)),
+ p(5, "Space Cathedral", SpaceStyle.Cathedral, listOf(0xFFFFD36B, 0xFFFFB54A, 0xFFFF8B3E, 0xFFF2603E, 0xFFD43A4A), listOf(42f, 48f, 12.5f, 4200f, -18f, 800f, 2.1f, 96f, 25f, 50f, 90f, 0.4f, 30f, 7000f, 120f)),
+ p(6, "Space Spring", SpaceStyle.Spring, listOf(0xFF8CF07A, 0xFF5FE08A, 0xFF34D09C, 0xFF22BFB2, 0xFF2CA6C8), listOf(28f, 4f, 1.8f, 7600f, -8f, 450f, 1.3f, 40f, 80f, 70f, 35f, 3.2f, 52f, 10500f, 150f)),
+ p(7, "Space Cloud", SpaceStyle.Cloud, listOf(0xFFFFC9E8, 0xFFF5B0F2, 0xFFD6A0FF, 0xFFB1A4FF, 0xFF8CB4FF), listOf(48f, 60f, 9f, 3600f, -20f, 650f, 1.8f, 90f, 18f, 40f, 100f, 0.9f, 64f, 6500f, 110f))
+ )
+}
+
+data class SpaceUiState(
+ val user: List<SpacePreset> = emptyList(), val presetId: String = "f0", val values: Map<String, Float> = SpacePresets.factory[0].values,
+ val dropdownOpen: Boolean = false, val saveOpen: Boolean = false
+) {
+ val all: List<SpacePreset> get() = SpacePresets.factory + user
+ val preset: SpacePreset get() = all.firstOrNull { it.id == presetId } ?: SpacePresets.factory[0]
+ val modified: Boolean get() = SpaceSpec.all.any { abs((values[it.key] ?: 0f) - (preset.values[it.key] ?: 0f)) > 1e-6f }
+}
+
+class SpaceController(
+ initialUser: List<SpacePreset> = emptyList(),
+ private val onParam: (key: String, value: Float) -> Unit = { _, _ -> },
+ private val onUserPresets: (List<SpacePreset>) -> Unit = {},
+ val onFire: () -> Unit = {}
+) {
+ private val _state = MutableStateFlow(SpaceUiState(user = initialUser))
+ val state: StateFlow<SpaceUiState> = _state.asStateFlow()
+
+ fun setValue(key: String, v: Float) { _state.update { it.copy(values = it.values + (key to v)) }; onParam(key, v) }
+ fun reset(key: String) { val v = _state.value.preset.values[key] ?: return; setValue(key, v) }
+ fun load(id: String) {
+ val p = _state.value.all.firstOrNull { it.id == id } ?: return
+ _state.update { it.copy(presetId = p.id, values = p.values, dropdownOpen = false) }
+ p.values.forEach { (k, v) -> onParam(k, v) }
+ }
+ fun step(d: Int) { val l = _state.value.all; val i = l.indexOfFirst { it.id == _state.value.presetId }.coerceAtLeast(0); load(l[(i + d + l.size) % l.size].id) }
+ fun dropdown(open: Boolean) = _state.update { it.copy(dropdownOpen = open, saveOpen = false) }
+ fun saveDialog(open: Boolean) = _state.update { it.copy(saveOpen = open, dropdownOpen = false) }
+ fun save(name: String) {
+ val s = _state.value; val base = s.preset
+ val p = SpacePreset("u" + System.currentTimeMillis(), name.trim().ifEmpty { "User ${s.user.size + 1}" }, base.style, base.palette, s.values, user = true)
+ _state.update { it.copy(user = it.user + p, presetId = p.id, saveOpen = false) }
+ onUserPresets(_state.value.user)
+ }
+ fun deleteUser(id: String) {
+ val wasCurrent = _state.value.presetId == id
+ _state.update { it.copy(user = it.user.filter { p -> p.id != id }) }
+ onUserPresets(_state.value.user)
+ if (wasCurrent) load("f0")
+ }
+}
+
+private val StageBase = Color(0xFF141414)
+private val TextMain = Color(0xFFF2F2F2)
+private fun hash(n: Float) = abs(sin(n * 127.1f) * 43758.5453f) % 1f
+private fun Color.mix(o: Color, t: Float) = Color(red + (o.red - red) * t, green + (o.green - green) * t, blue + (o.blue - blue) * t, alpha + (o.alpha - alpha) * t)
+private val StarPath = Path().apply { 
+ moveTo(0f, -1f); lineTo(0.28f, -0.28f); lineTo(1f, 0f); lineTo(0.28f, 0.28f); lineTo(0f, 1f); lineTo(-0.28f, 0.28f); lineTo(-1f, 0f); lineTo(-0.28f, -0.28f); close()
+}
+
+@Composable
+private fun RingKnob(spec: SpaceParam, value: Float, color: Color, size: Dp, onChange: (Float) -> Unit, onReset: () -> Unit) {
+ val shown by animateFloatAsState(value, spring(1f, Spring.StiffnessMediumLow), label = "knob")
+ val n = spec.norm(shown)
+ val cur by rememberUpdatedState(spec.norm(value))
+ var base = 0f; var acc = 0f
+ val full = with(LocalDensity.current) { 150.dp.toPx() }
+ Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+ Text(spec.label, color = Color(0xFFEDEDED), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont, maxLines = 1)
+ Spacer(Modifier.height(3.dp))
+ Canvas(
+ Modifier.size(size)
+ .pointerInput(spec) { detectTapGestures(onDoubleTap = { onReset() }) }
+ .pointerInput(spec) { detectVerticalDragGestures(onDragStart = { base = cur; acc = 0f }, onVerticalDrag = { c, dy -> c.consume(); acc += dy; onChange(spec.fromNorm(base - acc / full)) }) }
+ ) {
+ val u = this.size.minDimension / 64f
+ val dim = color.mix(StageBase, 0.64f); val col = dim.mix(color, 0.18f + 0.82f * n)
+ val c = center; val r = 26f * u; val w = 4f * u
+ val glow = 0.12f + 0.7f * n
+ for (k in 3 downTo 1) drawCircle(col.copy(alpha = glow * 0.16f / k), r, c, style = Stroke(w + k * (2f + 5f * n) * u)) 
+ drawCircle(col.copy(alpha = 0.03f + 0.14f * n), r, c)
+ drawCircle(col, r, c, style = Stroke(w))
+ rotate(-135f + n * 270f, c) { drawLine(col, Offset(c.x, c.y - 22f * u), Offset(c.x, c.y - 1f * u), 4.4f * u, StrokeCap.Round) }
+ }
+ Spacer(Modifier.height(3.dp))
+ Text(spec.format(shown), color = Color(0xFFEDEDED), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont, maxLines = 1)
+ }
+}
+
+private fun DrawScope.drawDesign(style: SpaceStyle, c: List<Color>, d: Float, t: Float, e: Float) {
+ val u = size.minDimension / 240f; val ctr = center
+ fun P(r: Float, a: Float) = Offset(ctr.x + cos(a) * r * u, ctr.y + sin(a) * r * u)
+ when (style) {
+ SpaceStyle.Hall -> {
+ for (i in 0..6) {
+ val r = 99f - i * 14.5f + sin(t * 1.3f + i) * (0.8f + e * 2.4f)
+ drawCircle(c[min(4, floor(i / 6f * 4.99f).toInt())].copy(alpha = (0.6f + 0.4f * (i / 6f) * (0.6f + e)).coerceIn(0f, 1f)), max(2f, r) * u, ctr, style = Stroke(9f * u))
+ }
+ drawCircle(c[4], (5f + e * 5f) * u, ctr)
+ }
+ SpaceStyle.Chamber -> {
+ for (i in 0..5) {
+ val r = 100f - i * 15.5f; val len = 20f + i * 12f + d * 30f
+ val ph = t * (14f + i * 7f) * (if (i % 2 == 1) 1f else -1f) * (0.5f + d + e)
+ drawCircle(c[i % 5].copy(alpha = 0.55f + 0.45f * e), r * u, ctr, style = Stroke(7f * u, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(len * u, r * 0.9f * u), ph * u)))
+ }
+ drawCircle(c[0], (8f + e * 6f) * u, ctr)
+ }
+ SpaceStyle.Room -> for (i in 0..5) {
+ val s = (188f - i * 31f + sin(t * 2f - i * 0.7f) * (2f + e * 5f)) * u
+ val a = (0.5f + 0.5f * max(0f, sin(t * 2.4f - i * 0.9f) * 0.5f + 0.5f + e * 0.3f)).coerceIn(0f, 1f)
+ drawRoundRect(c[i % 5].copy(alpha = a), Offset(ctr.x - s / 2, ctr.y - s / 2), Size(s, s), CornerRadius((14f - i) * u), style = Stroke(6f * u))
+ }
+ SpaceStyle.Shimmer -> { 
+ for (i in 0..4) {
+ val r = 96f - i * 18f; val n = 24 - i * 3; val w = (0.12f + 0.07f * i) * (if (i % 2 == 1) -1f else 1f)
+ drawCircle(c[i].copy(alpha = 0.07f + 0.05f * e), r * u, ctr, style = Stroke(1f * u))
+ for (k in 0 until n) {
+ val tw = 0.5f + 0.5f * sin(t * 5f + k * 2f + i)
+ val sz = (2.6f + 0.5f * i) * (0.7f + 0.6f * tw) * (1f + 0.5f * e)
+ val p = P(r, k.toFloat() / n * 2f * PI.toFloat() + t * w)
+ withTransform({ translate(p.x, p.y); rotate(t * 40f + k * 30f, Offset.Zero); scale(sz * u, sz * u, Offset.Zero) }) { drawPath(StarPath, c[i].copy(alpha = (0.45f + 0.55f * tw).coerceIn(0f, 1f))) }
+ }
+ }
+ drawCircle(Brush.radialGradient(listOf(c[0].copy(alpha = 0.6f), Color.Transparent), ctr, (30f + e * 14f) * u), (30f + e * 14f) * u, ctr)
+ }
+ SpaceStyle.Plate -> { 
+ for (k in 1..6) {
+ val r = 16f + k * 14.5f; val n = 6 + k * 6
+ drawCircle(c[min(4, k - 1)].copy(alpha = 0.06f), r * u, ctr, style = Stroke(1f * u))
+ for (m in 0 until n) {
+ val a = m.toFloat() / n * 2f * PI.toFloat()
+ val w = sin(k * 1.3f - t * (2f + d * 3f)) * cos(3f * a + t * 0.8f) * (0.5f + e)
+ drawCircle(c[min(4, k - 1)].copy(alpha = (0.4f + abs(w) * 0.6f).coerceIn(0f, 1f)), (1.8f + abs(w) * 2.8f) * u, P(r + w * 4.5f, a))
+ }
+ }
+ drawCircle(c[0], (3f + e * 4f) * u, ctr)
+ }
+ SpaceStyle.Cathedral -> { 
+ for (i in 0..3) {
+ val ro = 98f - i * 24f; val ri = ro - 21f; val n = 12 - i * 2; val da = (PI.toFloat() / n) * 0.82f
+ for (k in 0 until n) {
+ val a = k.toFloat() / n * 2f * PI.toFloat() + t * 0.05f * (if (i % 2 == 1) -1f else 1f)
+ val path = Path().apply {
+ moveTo(P(ro, a - da).x, P(ro, a - da).y)
+ quadraticBezierTo(P((ro + ri) / 2f + 7f, a - da * 0.95f).x, P((ro + ri) / 2f + 7f, a - da * 0.95f).y, P(ri, a).x, P(ri, a).y)
+ quadraticBezierTo(P((ro + ri) / 2f + 7f, a + da * 0.95f).x, P((ro + ri) / 2f + 7f, a + da * 0.95f).y, P(ro, a + da).x, P(ro, a + da).y)
+ }
+ val al = (0.4f + 0.6f * max(0f, sin(t * 1.6f - i * 0.8f + k * 0.5f) * 0.5f + 0.5f + e * 0.4f)).coerceIn(0f, 1f)
+ drawPath(path, c[i % 5].copy(alpha = al), style = Stroke(3.2f * u, cap = StrokeCap.Round, join = StrokeJoin.Round))
+ }
+ }
+ drawCircle(c[0], (12f + e * 5f) * u, ctr, style = Stroke(4f * u))
+ }
+ SpaceStyle.Spring -> { 
+ for (arm in 0..1) {
+ val path = Path(); val turns = 4.2f; val steps = 240
+ for (i in 0..steps) {
+ val th = i / steps.toFloat() * turns * 2f * PI.toFloat() + arm * PI.toFloat()
+ val r = 14f + (i / steps.toFloat()) * 86f + sin(th * 6f - t * (4f + 4f * d)) * (2.2f + e * 4f + d * 2f)
+ val p = P(r, th - t * 0.25f); if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+ }
+ drawPath(path, c[if (arm == 0) 0 else 2].copy(alpha = if (arm == 0) 1f else 0.55f), style = Stroke(5f * u, cap = StrokeCap.Round, join = StrokeJoin.Round))
+ }
+ drawCircle(c[4], (5f + e * 4f) * u, ctr)
+ }
+ SpaceStyle.Cloud -> { 
+ for (i in 0..3) {
+ val R = 88f - i * 22f; val n = 7 - i
+ for (k in 0 until n) {
+ val a = k.toFloat() / n * 2f * PI.toFloat() + t * (0.25f + 0.1f * i) * (if (i % 2 == 1) -1f else 1f)
+ val rad = (24f - i * 3f + e * 7f) * u; val p = P(R, a)
+ drawCircle(Brush.radialGradient(listOf(c[i].copy(alpha = 0.55f + 0.2f * e), Color.Transparent), p, rad), rad, p, blendMode = BlendMode.Plus)
+ }
+ }
+ val rad = (26f + e * 10f) * u
+ drawCircle(Brush.radialGradient(listOf(c[0].copy(alpha = 0.7f), Color.Transparent), ctr, rad), rad, ctr, blendMode = BlendMode.Plus)
+ }
+ }
+}
+
+@Composable
+private fun BigDecayKnob(style: SpaceStyle, pal: List<Color>, decay01: Float, t: Float, fires: List<Float>, decayText: String, onDecay: (Float) -> Unit, onFire: () -> Unit) {
+ var prev by remember { mutableStateOf(style) }; var cur by remember { mutableStateOf(style) }
+ val fade by animateFloatAsState(if (cur == style) 1f else 0f, tween(450), label = "fade") { if (it == 1f) prev = style }
+ if (cur != style && fade == 0f) { prev = cur; cur = style }
+ val curD by rememberUpdatedState(decay01)
+ var base = 0f; var acc = 0f
+ val full = with(LocalDensity.current) { 170.dp.toPx() }
+ val e = (0.12f + 0.12f * sin(t * 1.4f) + (fires.maxOfOrNull { exp(-(t - it) * (1.1f / (0.35f + decay01))) } ?: 0f)).coerceIn(0f, 1f)
+ Column(Modifier.width(236.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+ Text("DECAY", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = 0.5.sp)
+ Canvas(
+ Modifier.size(236.dp)
+ .pointerInput(Unit) { detectTapGestures(onTap = { onFire() }) }
+ .pointerInput(Unit) { detectVerticalDragGestures(onDragStart = { base = curD; acc = 0f }, onVerticalDrag = { c, dy -> c.consume(); acc += dy; onDecay((base - acc / full).coerceIn(0f, 1f)) }) }
+ ) {
+ val u = size.minDimension / 240f; val ctr = center
+ drawCircle(pal[0].copy(alpha = 0.04f + 0.05f * e), 114f * u, ctr)
+ if (fade < 1f) { withTransform({}) { drawDesign(prev, pal, decay01, t, e) } } 
+ drawIntoCanvas { cv -> cv.saveLayer(androidx.compose.ui.geometry.Rect(Offset.Zero, size), Paint().apply { alpha = if (fade < 1f) fade else 1f }); drawDesign(cur, pal, decay01, t, e); cv.restore() }
+ val life = 1.6f + decay01 * 3f
+ fires.forEach { b -> val a = t - b; if (a in 0f..life) drawCircle(pal[0].copy(alpha = (1f - a / life) * 0.6f), (14f + a * (50f + decay01 * 20f)) * u, ctr, style = Stroke(2.4f * u)) }
+ val ang = Math.toRadians((-135f + decay01 * 270f).toDouble()).toFloat()
+ fun T(r: Float) = Offset(ctr.x + sin(ang) * r * u, ctr.y - cos(ang) * r * u)
+ drawLine(pal[0].copy(alpha = 0.35f), T(86f), T(112f), 9f * u, StrokeCap.Round) 
+ drawLine(Color.White, T(86f), T(112f), 5f * u, StrokeCap.Round)
+ }
+ Text(decayText, color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont, modifier = Modifier.offset(y = (-2).dp))
+ }
+}
+
+@Composable
+private fun rememberSpaceTime(): Float {
+ var t by remember { mutableFloatStateOf(0f) }
+ LaunchedEffect(Unit) { while (true) withInfiniteAnimationFrameNanos { ns -> t = ns / 1e9f } }
+ return t
+}
+
+@Composable
+fun SpaceScreen(state: SpaceUiState, controller: SpaceController, modifier: Modifier = Modifier) {
+ BoxWithConstraints(modifier) {
+ val sc = min(maxWidth.value / 891f, maxHeight.value / 411f)
+ Box(Modifier.size((891 * sc).dp, (411 * sc).dp).align(Alignment.Center).clip(RoundedCornerShape((20 * sc).dp))) {
+ Box(Modifier.requiredSize(891.dp, 411.dp).layout { m, _ -> val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(891.dp.roundToPx(), 411.dp.roundToPx())); layout((891 * sc * density).toInt(), (411 * sc * density).toInt()) { p.placeWithLayer(0, 0) { scaleX = sc; scaleY = sc; transformOrigin = TransformOrigin(0f, 0f) } } }) {
+ SpaceStage(state, controller)
+ }
+ }
+ }
+}
+
+@Composable
+fun SpaceStage(state: SpaceUiState, controller: SpaceController) {
+ val t = rememberSpaceTime()
+ val fires = remember { mutableStateListOf<Float>() }
+ LaunchedEffect(t) { fires.removeAll { t - it > 7f } }
+ val preset = state.preset
+ val pal = preset.palette.map { animateColorAsState(it, tween(450), label = "pal").value }
+ fun v(k: String) = state.values[k] ?: 0f
+ val decaySpec = SpaceSpec.byKey.getValue("decay")
+ val decayShown by animateFloatAsState(v("decay"), spring(1f, Spring.StiffnessMediumLow), label = "decay")
+ var saveName by remember { mutableStateOf("") }
+ Box(Modifier.size(891.dp, 411.dp).background(Brush.radialGradient(listOf(pal[0].mix(StageBase, 0.86f), StageBase), Offset(891f * 0.38f, 411f * 0.45f), 640f))) {
+ Text(buildAnnotatedString {
+ withStyle(SpanStyle(color = TextMain)) { append("Æther") }; withStyle(SpanStyle(color = pal[0])) { append("Space") }; withStyle(SpanStyle(color = pal[2])) { append(preset.style.label) }
+ }, Modifier.offset(28.dp, 10.dp), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = (-1).sp, maxLines = 1)
+ Text("Version 1.0\naetherkeys", Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 24.dp), color = pal[1], fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = SpaceFont, lineHeight = 17.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+
+ Column(Modifier.offset(22.dp, 112.dp).width(92.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
+ listOf("mix" to 0, "pre" to 1).forEach { (k, ci) -> val s = SpaceSpec.byKey.getValue(k); RingKnob(s, v(k), pal[ci], 54.dp, { controller.setValue(k, it) }, { controller.reset(k) }) }
+ }
+ Box(Modifier.offset(116.dp, 78.dp)) {
+ BigDecayKnob(preset.style, pal, decaySpec.norm(decayShown), t, fires, "%.2f s".format(decayShown), { controller.setValue("decay", decaySpec.fromNorm(it)) }, { fires.add(t); controller.onFire() })
+ }
+ Row(Modifier.offset(362.dp, 100.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+ SpaceSpec.groups.forEachIndexed { gi, (title, keys, w) ->
+ val col = pal[gi]
+ Column(
+ Modifier.width(w.dp).drawBehind { drawRoundRect(col.copy(alpha = 0.10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx())) }
+ .border(2.6.dp, col, RoundedCornerShape(24.dp)).padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
+ horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)
+ ) {
+ Text(title, color = TextMain, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = 0.4.sp)
+ keys.chunked(if (keys.size > 2) 2 else 1).forEach { rowKeys ->
+ Row(Modifier.fillMaxWidth()) { rowKeys.forEach { k -> Box(Modifier.weight(1f)) { val s = SpaceSpec.byKey.getValue(k); RingKnob(s, v(k), col, 44.dp, { controller.setValue(k, it) }, { controller.reset(k) }) } } }
+ }
+ }
+ }
+ }
+
+ Row(Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 14.dp).fillMaxWidth().padding(end = 24.dp).height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+ Text("SPACE:", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont)
+ Spacer(Modifier.width(10.dp))
+ Text(preset.style.label, Modifier.width(130.dp), color = pal[2], fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont)
+ Spacer(Modifier.width(70.dp))
+ Text("PRESETS:", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont)
+ Spacer(Modifier.width(10.dp))
+ Row(
+ Modifier.width(250.dp).height(32.dp).clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.35f))
+ .border(2.dp, if (state.dropdownOpen) pal[0] else pal[0].copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+ .clickable { controller.dropdown(!state.dropdownOpen) }.padding(horizontal = 14.dp),
+ verticalAlignment = Alignment.CenterVertically
+ ) {
+ Text(preset.name + if (state.modified) " •" else "", Modifier.weight(1f), color = pal[1], fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
+ Icon(painterResource(R.drawable.ic_space_dropdown), null, Modifier.size(12.dp), pal[0])
+ }
+ Icon(painterResource(R.drawable.ic_space_prev), null, Modifier.padding(start = 6.dp).size(26.dp, 30.dp).clickable(remember { MutableInteractionSource() }, null) { controller.step(-1) }.padding(3.dp), pal[0])
+ Icon(painterResource(R.drawable.ic_space_next), null, Modifier.size(26.dp, 30.dp).clickable(remember { MutableInteractionSource() }, null) { controller.step(1) }.padding(3.dp), pal[0])
+ Spacer(Modifier.weight(1f))
+ Box(
+ Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).background(if (state.saveOpen) pal[3].copy(alpha = 0.2f) else Color.Transparent)
+ .border(2.dp, pal[3], RoundedCornerShape(16.dp)).clickable { controller.saveDialog(!state.saveOpen) }.padding(horizontal = 20.dp),
+ contentAlignment = Alignment.Center
+ ) { Text("SAVE", color = pal[3], fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = 1.sp) }
+ }
+
+ if (state.dropdownOpen) {
+ Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { controller.dropdown(false) })
+ Column(
+ Modifier.align(Alignment.BottomStart).padding(start = 306.dp, bottom = 52.dp).width(300.dp).heightIn(max = 240.dp)
+ .clip(RoundedCornerShape(18.dp)).background(Color(0xF70E0E0E)).border(2.dp, pal[0].copy(alpha = 0.5f), RoundedCornerShape(18.dp)).verticalScroll(rememberScrollState()).padding(8.dp)
+ ) {
+ listOf("FACTORY" to SpacePresets.factory, "USER" to state.user).forEach { (title, list) ->
+ if (list.isNotEmpty()) {
+ Text(title, Modifier.padding(start = 10.dp, top = 6.dp, bottom = 4.dp), color = Color(0xFF8A8A8A), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = 2.sp)
+ list.forEach { p ->
+ val on = p.id == state.presetId
+ Row(verticalAlignment = Alignment.CenterVertically) {
+ Row(
+ Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(12.dp)).background(if (on) p.palette[0].copy(alpha = 0.16f) else Color.Transparent).clickable { controller.load(p.id) }.padding(horizontal = 10.dp),
+ verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+ ) {
+ Row { p.palette.take(4).forEachIndexed { i, c -> Box(Modifier.size(9.dp, 14.dp).background(c, RoundedCornerShape(topStart = if (i == 0) 4.dp else 0.dp, bottomStart = if (i == 0) 4.dp else 0.dp, topEnd = if (i == 3) 4.dp else 0.dp, bottomEnd = if (i == 3) 4.dp else 0.dp))) } }
+ Text(p.name, Modifier.weight(1f), color = if (on) Color.White else Color(0xFFC8C8C8), fontSize = 14.sp, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.SemiBold, fontFamily = SpaceFont, maxLines = 1)
+ Text(p.style.label, color = Color(0xFF8A8A8A), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont)
+ }
+ if (p.user) Icon(painterResource(R.drawable.ic_space_close), null, Modifier.size(26.dp, 30.dp).clickable(remember { MutableInteractionSource() }, null) { controller.deleteUser(p.id) }.padding(7.dp), Color(0xFF8A8A8A))
+ }
+ }
+ }
+ }
+ }
+ }
+ if (state.saveOpen) {
+ Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { controller.saveDialog(false) })
+ Column(
+ Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 52.dp).width(280.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF70E0E0E))
+ .border(2.dp, pal[3].copy(alpha = 0.55f), RoundedCornerShape(18.dp)).padding(12.dp)
+ ) {
+ Text("SAVE TO USER", color = Color(0xFF8A8A8A), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont, letterSpacing = 2.sp)
+ Spacer(Modifier.height(8.dp))
+ BasicTextField(
+ value = saveName, onValueChange = { if (it.length <= 22) saveName = it }, singleLine = true, cursorBrush = SolidColor(pal[3]),
+ textStyle = TextStyle(color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont),
+ decorationBox = { inner -> Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.45f)).border(1.5.dp, pal[3].copy(alpha = 0.4f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) { if (saveName.isEmpty()) Text("User ${state.user.size + 1}", color = Color(0xFF666666), fontSize = 14.5.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont); inner() } }
+ )
+ Spacer(Modifier.height(10.dp))
+ Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+ Text("Cancel", Modifier.clickable { controller.saveDialog(false) }, color = Color(0xFF9A9A9A), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = SpaceFont)
+ Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(pal[3]).clickable { controller.save(saveName); saveName = "" }.padding(horizontal = 22.dp), contentAlignment = Alignment.Center) { Text("Save", color = Color(0xFF111111), fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = SpaceFont) }
+ }
+ }
+ }
+ }
+}
+
+ * val ctrl = remember { SpaceController(onParam = { k, v -> engine.setSpaceParam(k, v) }, onFire = { engine.audition() }) }
+ * val state by ctrl.state.collectAsState()
+ * SpaceScreen(state, ctrl, Modifier.fillMaxWidth().aspectRatio(891f / 411f))
+ */
