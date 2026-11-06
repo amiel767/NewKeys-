@@ -251,3 +251,13 @@ Piano `9c93aa40` — ne pas y pousser.
   dans le catalogue pur.
 - **Keystore de debug gitignore** : regenerer par `keytool -genkeypair` (alias
   `androiddebugkey`, pass `android`) sinon `assembleDebug` echoue a la signature.
+
+## Fenêtre FX : nouvelle coque `FxSlotsWindow` (branche `design/fx-reverb`, commit `2867d39`)
+- Le Kotlin de DeepSeek a été récupéré **dans le dépôt** (`git show 06826f3:FxSlotsWindow.kt`),
+  pas par le lien (CloudFront bloque les IP datacenter). Le lien était mort, le fichier non.
+- Modèle : 1 slot MIDI + 3 audio, catalogue dans la fenêtre, éditeur passé par paramètre.
+  Catalogue limité à `Arp` (MIDI) et `Reverb`/Æther Space (audio) via la liste `CATALOG`.
+- **Piège** : `FxSlotsController.state` est un **StateFlow** → `collectAsState()` obligatoire,
+  `state.value` en composition ne recompose pas (catalogue/éditeur muets).
+- Ancienne fenêtre + résidus supprimés (12 fichiers) ; le design des éditeurs conservé
+  (`AeSpaceScreen`, `FxDesign`, `FxFonts`, `FxIcons`, `FxC`).
