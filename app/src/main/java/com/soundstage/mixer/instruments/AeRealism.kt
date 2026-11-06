@@ -62,8 +62,9 @@ internal fun Modifier.aeWood(base: Color = Color(0xFF6A3A20), seed: Int = 4): Mo
  * Turned plastic knob, filling the current canvas. [angleDeg] is the pointer angle from vertical.
  *
  * Relief comes from four cues a flat circle lacks: a cast shadow under the body, a cylinder
- * gradient for the barrel, radial knurling around the rim, and a specular on the upper-left of the
- * top face. [tint] lets a knob belong to its instrument without losing the black-plastic read.
+ * gradient for the barrel, radial knurling around the rim, and a small specular on the upper-left
+ * of the top face. The specular is kept low on purpose: a bright white oval on a dark cap reads as
+ * a glare sticker, not as a lit moulding. [tint] lets a knob belong to its instrument without losing the black-plastic read.
  */
 internal fun DrawScope.drawPlasticKnob(angleDeg: Float, tint: Color = Color(0xFF202027), seed: Int = 11) {
     val d = min(size.width, size.height)
@@ -80,8 +81,8 @@ internal fun DrawScope.drawPlasticKnob(angleDeg: Float, tint: Color = Color(0xFF
     drawCircle(
         Brush.linearGradient(
             listOf(
-                lerp(tint, Color.Black, 0.72f), lerp(tint, Color.White, 0.30f),
-                lerp(tint, Color.White, 0.10f), lerp(tint, Color.Black, 0.55f), lerp(tint, Color.Black, 0.80f),
+                lerp(tint, Color.Black, 0.72f), lerp(tint, Color.White, 0.14f),
+                lerp(tint, Color.White, 0.04f), lerp(tint, Color.Black, 0.60f), lerp(tint, Color.Black, 0.82f),
             ),
             start = Offset(cx - r, cy), end = Offset(cx + r, cy),
         ),
@@ -102,20 +103,20 @@ internal fun DrawScope.drawPlasticKnob(angleDeg: Float, tint: Color = Color(0xFF
     val rf = r * 0.72f
     drawCircle(
         Brush.radialGradient(
-            listOf(lerp(tint, Color.White, 0.34f), lerp(tint, Color.White, 0.10f), lerp(tint, Color.Black, 0.52f)),
+            listOf(lerp(tint, Color.White, 0.17f), lerp(tint, Color.White, 0.05f), lerp(tint, Color.Black, 0.56f)),
             center = Offset(cx - rf * 0.32f, cy - rf * 0.38f), radius = rf * 1.7f,
         ),
         rf, Offset(cx, cy),
     )
     drawCircle(Color(0x33000000), rf * 0.93f, Offset(cx, cy), style = Stroke(r * 0.045f))
     drawOval(
-        Color(0x4DFFFFFF),
+        Color(0x1FFFFFFF),
         topLeft = Offset(cx - rf * 0.66f, cy - rf * 0.80f),
         size = Size(rf * 0.94f, rf * 0.46f),
     )
     rotate(angleDeg, Offset(cx, cy)) {
         drawRoundRect(
-            Color(0xFFF4F6FA),
+            Color(0xFFBFC4CE),
             Offset(cx - r * 0.045f, cy - r * 0.82f),
             Size(r * 0.09f, r * 0.40f),
             CornerRadius(r * 0.045f),

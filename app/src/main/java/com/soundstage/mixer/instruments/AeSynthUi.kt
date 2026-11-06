@@ -42,7 +42,7 @@ internal fun Modifier.drag01(onPos: (Float, Float) -> Unit) = pointerInput(Unit)
 
 /** Polysynth: SOUND / MOTION / VOICE pages around the central sphere. Same layout as the validated preview. */
 @Composable
-fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
+fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim, onBend: (Float) -> Unit = {}) {
     val y: (Int) -> Float = { c.v(it) }
     Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF2A1A66), Color(0xFF0D0A24), Color(0xFF05040F)), center = androidx.compose.ui.geometry.Offset.Unspecified, radius = 900f)))
     Canvas(Modifier.at(375, 50, 250, 250)) { a.frame.intValue; drawOrb(a, y) }
@@ -52,28 +52,35 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
 
     when (c.s.page) {
         0 -> {
-            // The cards run to y=426 instead of 340: the band the on-screen keyboard used to
-            // occupy now belongs to the controls that were cramped against it. The two waveform
-            // views, the filter curve and the envelope all roughly double in height, which is
-            // where the extra room actually reads — the knob rows are already at their tightest
-            // pitch (66 units, and an AeGlassKnob's touch box is its size plus 22).
-            Card(22, 54, 272, 372, "OSCILLATORS")
-            Canvas(Modifier.at(36, 84, 240, 56)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
-            Canvas(Modifier.at(36, 146, 240, 56)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
-            AeGlassKnob(c, 0, "Wave A", 40, 212, 46); AeGlassKnob(c, 1, "Wave B", 106, 212, 46); AeGlassKnob(c, 2, "Detune", 172, 212, 46); AeGlassKnob(c, 3, "Sub", 238, 212, 46)
-            AeGlassKnob(c, 4, "Noise", 40, 300, 46); AeGlassKnob(c, 5, "Unison", 106, 300, 46); AeGlassKnob(c, 6, "Spread", 172, 300, 46)
+            // Original layout. The band the on-screen keyboard used to fill is NOT bought by
+            // stretching these cards: they keep their size and two new elements go in the free
+            // space instead — a pitch bend strip on the left, a live spectrum on the right.
+            Card(22, 54, 272, 286, "OSCILLATORS")
+            Canvas(Modifier.at(36, 88, 240, 42)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
+            Canvas(Modifier.at(36, 136, 240, 42)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
+            AeGlassKnob(c, 0, "Wave A", 40, 188, 46); AeGlassKnob(c, 1, "Wave B", 106, 188, 46); AeGlassKnob(c, 2, "Detune", 172, 188, 46); AeGlassKnob(c, 3, "Sub", 238, 188, 46)
+            AeGlassKnob(c, 4, "Noise", 40, 254, 46); AeGlassKnob(c, 5, "Unison", 106, 254, 46); AeGlassKnob(c, 6, "Spread", 172, 254, 46)
 
-            Card(706, 54, 272, 246, "FILTER")
+            Card(706, 54, 272, 196, "FILTER")
             arrayOf("LP", "HP", "BP", "NOTCH").forEachIndexed { i, t -> AeChip(c, 11, i, 4, t, 722 + i * 56, 82, 52) }
-            Canvas(Modifier.at(720, 112, 250, 106).drag01 { px, py -> c.set(7, px); c.set(8, 1f - py) }) { a.frame.intValue; drawFilter(a, y) }
-            AeGlassKnob(c, 7, "Cutoff", 722, 228, 46); AeGlassKnob(c, 8, "Reso", 790, 228, 46); AeGlassKnob(c, 9, "Drive", 858, 228, 46); AeGlassKnob(c, 10, "Env", 926, 228, 46)
+            Canvas(Modifier.at(720, 108, 250, 75).drag01 { px, py -> c.set(7, px); c.set(8, 1f - py) }) { a.frame.intValue; drawFilter(a, y) }
+            AeGlassKnob(c, 7, "Cutoff", 722, 188, 40); AeGlassKnob(c, 8, "Reso", 784, 188, 40); AeGlassKnob(c, 9, "Drive", 846, 188, 40); AeGlassKnob(c, 10, "Env", 908, 188, 40)
 
-            Card(706, 306, 272, 120, "ENVELOPE")
-            Canvas(Modifier.at(720, 330, 250, 86).drag01 { px, py ->
+            Card(706, 256, 272, 84, "ENVELOPE")
+            Canvas(Modifier.at(720, 282, 250, 50).drag01 { px, py ->
                 if (px < 0.28f) c.set(12, px / 0.28f * 0.9f)
                 else if (px < 0.55f) { c.set(13, (px - 0.28f) / 0.27f); c.set(14, 1f - py) }
                 else if (px > 0.7f) c.set(15, (px - 0.7f) / 0.3f)
             }) { a.frame.intValue; drawEnv(y) }
+
+            // The band the on-screen keyboard used to occupy, y 340..460. The free run is x
+            // 22..978 (nothing above it past x=978). Pitch bend takes the left, the spectrum the
+            // right, and the gap between them stays empty rather than being filled with a readout.
+            AeT("PERFORMANCE", 9, AeC.violet, Modifier.at(22, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold)
+            AeT("OUTPUT", 9, AeC.violet, Modifier.at(558, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold, align = TextAlign.End)
+            AePitchBend(22, 358, 40, 96, onBend)
+            Canvas(Modifier.at(80, 358, 470, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t, Color(0xFFE05CFF)) }
+            Canvas(Modifier.at(566, 358, 412, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t * 1.7f, Color(0xFF8A5CFF)) }
         }
         1 -> {
             Card(22, 54, 312, 286, "LFO 1")

@@ -1,5 +1,6 @@
 package com.soundstage.mixer.instruments
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -11,6 +12,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -32,6 +34,8 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import com.soundstage.mixer.ui.components.FaderRail
 import com.soundstage.mixer.ui.components.FaderThumb
@@ -174,17 +178,16 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
         Canvas(Modifier.size(size.su())) {
             val d = this.size.minDimension
             val r = d / 2f
-            // Dark metal, lit once from the upper left. The previous version had three grey stops
-            // across the face plus a hard dark ring, which read as a lit rim around every knob.
+            // Dark metal, one soft key light from the upper left, and nothing brighter than that.
+            // The white glare came from drawPlasticKnob's specular; it is toned down at the source.
             drawCircle(
                 Brush.radialGradient(
-                    listOf(Color(0xFF3C4148), Color(0xFF23262C), Color(0xFF14161A)),
-                    center = Offset(d * 0.34f, d * 0.30f), radius = d * 0.8f,
+                    listOf(Color(0xFF343941), Color(0xFF1F2228), Color(0xFF121418)),
+                    center = Offset(d * 0.34f, d * 0.30f), radius = d * 0.82f,
                 ),
                 r, this.center,
             )
-            drawArc(Color(0x26FFFFFF), 195f, 150f, false, Offset(r * 0.2f, r * 0.2f), Size(d * 0.8f, d * 0.8f), style = Stroke(d * 0.028f, cap = StrokeCap.Round))
-            drawPlasticKnob(-135f + 270f * c.v(idx), tint = Color(0xFF212128))
+            drawPlasticKnob(-135f + 270f * c.v(idx), tint = Color(0xFF1B1D23))
         }
         AeT(label, 8, AeC.goldDim, Modifier.fillMaxWidth().padding(top = 2.su()), font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center)
     }
@@ -336,16 +339,23 @@ fun AeSeg(
  * as a seam across the cap. Its measured relief is kept and only the tint changes.
  */
 @Composable
-fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number, h: Number = 196, step: Number = 16) {
+fun AeDrawbar(
+    c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number,
+    h: Number = 196, step: Number = 16, limitTop: Number = 0,
+) {
     val sc = LocalAeScale.current
     val n = (c.v(idx) * 8).roundToInt()
-    val target = 14f + n * step.toFloat()
+    // [limitTop] is the y the cap may not rise above, in the parent's coordinates: 0 is the slot
+    // itself, but when a slot sits under a title the caller passes the title's lower edge. Without
+    // it the cap slid up over the number above the rail.
+    val target = maxOf(limitTop.toFloat() - y.toFloat(), 14f + n * step.toFloat())
     // While the finger is down the cap tracks it with no spring, otherwise a drag feels like it
     // has to push through the animation. The spring is only for outside changes (preset load,
     // undo, keyboard), where a small settle reads as mechanical rather than abrupt.
     var dragging by remember { mutableStateOf(false) }
     val animated by animateFloatAsState(target, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
     val capY = if (dragging) target else animated
+    val floorY = limitTop.toFloat() - y.toFloat()
     fun fromY(py: Float) = (((py / sc) - 14f - 13f) / step.toFloat()).roundToInt().coerceIn(0, 8) / 8f
     val capTop = when (color) {
         0 -> Color(0xFF6B3A1C)   // brown
@@ -376,14 +386,18 @@ fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number
             glow = 0f,
             body = Color(0xFF0C0C10),
         )
-        AeT(foot, 8, Color(0xFFD6C79C), Modifier.at(0, 0.5f, 34, 11), AeFonts.plate, align = TextAlign.Center)
-        Box(Modifier.at(3f, capY, 28, 30)) {
-            FaderThumb(
-                accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false,
-                capTop = capTop, capBottom = capBottom, showLed = false,
-            )
+        // Foot marking, small and dim: at 8 it competed with the rail, and the cap's own position
+        // already carries the reading.
+        AeT(foot, 7, Color(0xFF8C7F63), Modifier.at(0, 0.5f, 34, 10), AeFonts.plate, align = TextAlign.Center)
+        // The cap is clipped to its slot, so it can never ride up over the marking above.
+        Box(Modifier.at(0f, 0f, 34, h).clip(RoundedCornerShape(6.su()))) {
+            Box(Modifier.at(3f, capY, 28, 30)) {
+                FaderThumb(
+                    accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false,
+                    capTop = capTop, capBottom = capBottom, showLed = false,
+                )
+            }
         }
-        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 20f, 34, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
     }
 }
 
@@ -546,3 +560,48 @@ object AePals {
     fun of(i: AeInstrument): AePal = when (i) { AeInstrument.LEADS -> LEADS; AeInstrument.SAX -> SAX; else -> SYNTH }
 }
 val AeCtl.pal: AePal get() = AePals.of(s.instrument)
+
+/**
+ * Pitch bend strip: drag up or down, it springs back to centre on release.
+ *
+ * [onValue] receives -1..1. The window passes it straight to the engine's pitch bend, so this is a
+ * real performance control rather than a readout — the on-screen keyboard carries its own bend
+ * strip, and the instrument window had none.
+ */
+@Composable
+internal fun AePitchBend(x: Number, y: Number, w: Number, h: Number, onValue: (Float) -> Unit) {
+    val sc = LocalAeScale.current
+    val v = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    fun set(py: Float) {
+        val nv = (1f - (py / (h.toFloat() * sc)) * 2f).coerceIn(-1f, 1f)
+        scope.launch { v.snapTo(nv); onValue(nv) }
+    }
+    fun release() = scope.launch { v.animateTo(0f, spring(0.45f, 380f)) { onValue(value) } }
+    val sh = RoundedCornerShape(10.su())
+    Box(
+        Modifier.at(x, y, w, h).clip(sh).background(Color(0xFF121722)).border(1.su(), Color(0x33FFFFFF), sh)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { set(it.y) },
+                    onVerticalDrag = { ch, _ -> ch.consume(); set(ch.position.y) },
+                    onDragEnd = { release() }, onDragCancel = { release() },
+                )
+            },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val u = size.width / w.toFloat()
+            val cy = size.height / 2f
+            val travel = size.height / 2f - 11f * u
+            val hy = cy - v.value * travel
+            drawRoundRect(Color(0x3DFFFFFF), Offset(size.width / 2f - u, 11f * u), Size(2f * u, size.height - 22f * u), CornerRadius(u))
+            drawRoundRect(Color(0xFF19E3FF), Offset(size.width / 2f - u, minOf(hy, cy)), Size(2f * u, abs(cy - hy)), CornerRadius(u))
+            val hw = 24f * u
+            val hh = 11f * u
+            drawRoundRect(
+                Brush.verticalGradient(listOf(Color(0xFFEDF0F5), Color(0xFFC0C6D1))),
+                Offset(size.width / 2f - hw / 2f, hy - hh / 2f), Size(hw, hh), CornerRadius(6f * u),
+            )
+        }
+    }
+}

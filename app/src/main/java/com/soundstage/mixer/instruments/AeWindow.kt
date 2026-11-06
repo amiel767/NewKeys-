@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.soundstage.mixer.audio.NativeAudioBridge
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -123,7 +124,12 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
+            // Pitch bend goes to the engine on this strip's own channel, so the strip bends the
+            // instrument it belongs to rather than whatever the mixer last selected.
+            val onBend: (Float) -> Unit = remember(strip) {
+                { b -> NativeAudioBridge.safePitchBend(strip, ((b.coerceIn(-1f, 1f) + 1f) * 8191.5f).toInt()) }
+            }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a, onBend); AeInstrument.LEADS -> AeLeadsUi(c, a, onBend); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
             // No "ÆTHER <instrument>" caption here. The header pill carries the loaded preset
             // name, which is what identifies the window; the decorative brand line above it
             // only competed with the pill. Sax keeps its factory name (its type is a real

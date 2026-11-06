@@ -58,13 +58,13 @@ internal fun AeCardBox(x: Number, y: Number, w: Number, h: Number, title: String
  * The cap travels inside [CAP_TOP]..[CAP_BOTTOM]. Everything derives from [capCenterY], so the
  * drawing and the drag cannot disagree.
  */
-private const val FADER_H = 240f
+private const val FADER_H = 160f
 private const val FADER_W = 34f
 private const val CAP_H = 40f
 private const val CAP_W = CAP_H * (1327f / 1657f)  // FaderThumb is portrait
 private const val RAIL_W = 16f
 private const val GROOVE_TOP = 8f
-private const val LABEL_TOP = 225f
+private const val LABEL_TOP = 145f
 private const val CAP_TOP = GROOVE_TOP + CAP_H / 2f
 private const val CAP_BOTTOM = LABEL_TOP - CAP_H / 2f
 private const val CAP_TRAVEL = CAP_BOTTOM - CAP_TOP
@@ -111,7 +111,7 @@ private fun LeadsTabs(c: AeCtl) = AePageTabs(c, arrayOf("SOUND", "SHAPE", "FX", 
 
 /** Mono lead: five layers with LED faders, oscilloscope, AHDSR + filter, FX, performance. Layout of the validated preview. */
 @Composable
-fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
+fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, onBend: (Float) -> Unit = {}, samples: FloatArray? = null) {
     val y: (Int) -> Float = { c.v(it) }
     val border = Color(0x2619E3FF)
     Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF0E1F33), Color(0xFF070D18), Color(0xFF03060B)), radius = 900f)))
@@ -121,7 +121,9 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
         0 -> {
             // The cards run to y=426: the band the on-screen keyboard used to fill now belongs
             // to the five layer faders, whose throw goes from 97 to 177 units, and to the scope.
-            AeCardBox(22, 54, 566, 372, "LAYERS · LEVEL & OCTAVE", CYAN, border)
+            // The cards keep their original size. The band the on-screen keyboard used to fill
+            // now holds a pitch bend strip and an output monitor, rather than a stretched fader.
+            AeCardBox(22, 54, 566, 286, "LAYERS · LEVEL & OCTAVE", CYAN, border)
             val names = arrayOf("SINE", "SQUARE", "SAW", "SUPER", "SOFT")
             for (i in 0 until 5) {
                 val x = 36 + i * 108
@@ -132,13 +134,19 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 AeFader(c, i, x + 33, 118)
                 // One octave switch per layer, the app's segmented toggle rather than three
                 // loose chips: "−1 0 +1" is a single setting with three positions.
-                AeSeg(listOf("−1", "0", "+1"), (c.v(5 + i) * 2f).roundToInt(), x + 3, 368, 102, CYAN, onSelect = { j -> c.set(5 + i, j / 2f) })
+                AeSeg(listOf("−1", "0", "+1"), (c.v(5 + i) * 2f).roundToInt(), x + 3, 278, 102, CYAN, onSelect = { j -> c.set(5 + i, j / 2f) })
             }
-            Canvas(Modifier.at(22, 118, 566, 240)) { a.frame.intValue; drawMeters(a) }
-            AeCardBox(604, 54, 374, 196, "OSCILLOSCOPE", CYAN, border)
-            Canvas(Modifier.at(620, 80, 342, 158).clip(RoundedCornerShape(6.su()))) { a.frame.intValue; drawLeadScope(a, y, c.s.held.isNotEmpty(), samples) }
-            AeCardBox(604, 262, 374, 164, "SHAPING", CYAN, border)
-            AeGlassKnob(c, 10, "Pulse W", 636, 302, 58); AeGlassKnob(c, 11, "Detune", 724, 302, 58); AeGlassKnob(c, 29, "Glide", 812, 302, 58); AeGlassKnob(c, 31, "Level", 900, 302, 58)
+            Canvas(Modifier.at(22, 118, 566, 160)) { a.frame.intValue; drawMeters(a) }
+            AeCardBox(604, 54, 374, 150, "OSCILLOSCOPE", CYAN, border)
+            Canvas(Modifier.at(620, 82, 342, 107).clip(RoundedCornerShape(6.su()))) { a.frame.intValue; drawLeadScope(a, y, c.s.held.isNotEmpty(), samples) }
+            AeCardBox(604, 210, 374, 130, "SHAPING", CYAN, border)
+            AeGlassKnob(c, 10, "Pulse W", 640, 238, 46); AeGlassKnob(c, 11, "Detune", 724, 238, 46); AeGlassKnob(c, 29, "Glide", 808, 238, 46); AeGlassKnob(c, 31, "Level", 892, 238, 46)
+            // The band the keyboard used to occupy, y 340..460. Free run x 22..978.
+            AeT("PERFORMANCE", 9, CYAN, Modifier.at(22, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold)
+            AeT("OUTPUT", 9, CYAN, Modifier.at(558, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold, align = TextAlign.End)
+            AePitchBend(22, 358, 40, 96, onBend)
+            Canvas(Modifier.at(80, 358, 470, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t, CYAN) }
+            Canvas(Modifier.at(566, 358, 412, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t * 1.7f, Color(0xFF19E3FF)) }
         }
         1 -> {
             AeCardBox(22, 54, 566, 286, "AHDSR ENVELOPE", CYAN, border)
