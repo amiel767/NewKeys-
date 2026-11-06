@@ -138,13 +138,13 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     AeRocker(c, 21, "3RD", 548, 242, 44)
 
     Caption("ROTARY", 402, 276, 196)
-    // The rotor animation sat at x=420 and the switch at x=442, so the two overlapped. The knob
-    // that also drove param 25 is gone (a two-way control for one setting), and what is left is
-    // centred in the panel: rotor 424..482, switch 492..642.
-    Canvas(Modifier.at(424, 290, 58, 34)) { a.frame.intValue; drawRotor(a) }
+    // The moving rotor belongs in the CENTRE. What was here was a rotary knob at x=420 with the
+    // switch at x=442 — two things for one setting, overlapping. The knob is gone and the moving
+    // rotor is drawn where it is, on its own, with nothing beside it. Tapping it cycles the speed.
     val les = (c.v(25) * 2).roundToInt()
     val lx by animateFloatAsState(les * 50f, label = "leslie")
-    Box(Modifier.at(492, 288, 150, 34).clickable(remember { MutableInteractionSource() }, null) { c.set(25, ((les + 1) % 3) / 2f) }) {
+    Box(Modifier.at(452, 284, 96, 44).clickable(remember { MutableInteractionSource() }, null) { c.set(25, ((les + 1) % 3) / 2f) }) {
+        Canvas(Modifier.fillMaxSize()) { a.frame.intValue; drawRotor(a) }
         Canvas(Modifier.fillMaxSize()) {
             val u = size.width / 150f
             drawRoundRect(Color(0xFF0A0A0D), Offset.Zero, size, CornerRadius(8f * u))
@@ -167,18 +167,13 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     // whole width: they voice the organ as a whole, so they belong to the middle column. AeMetalKnob
     // occupies size + 22 (its label hangs below the cap), and they are on a 78 pitch to leave air.
     val kw = 78
-    val kx = 475 - (kw * 3) / 2
+    val kx = 354
     AeT("VOICING", 9, AeC.organ, Modifier.at(402, 344, 196, 12), weight = FontWeight.ExtraBold, spacing = 0.2f, align = TextAlign.Center)
     AeMetalKnob(c, 26, "CLICK", kx, 362, 58)
     AeMetalKnob(c, 28, "DRIVE", kx + kw, 362, 58)
     AeMetalKnob(c, 27, "TONE", kx + kw * 2, 362, 58)
     AeMetalKnob(c, 30, "LEVEL", kx + kw * 3, 362, 58)
-    // Two settings the engine reads but no control reached: where the vibrato/chorus is routed,
-    // and whether the rotary is stopped, slow or fast. Both are real parameters, not readouts.
-    AeT("VIBRATO", 8, AeC.goldDim, Modifier.at(72, 352, 120, 11), AeFonts.plate, spacing = 0.14f)
-    AeChip(c, 23, 0, 2, "UPPER", 72, 366, 46)
-    AeChip(c, 24, 1, 2, "LOWER", 122, 366, 46)
-    AeT("ROTARY", 8, AeC.goldDim, Modifier.at(806, 352, 120, 11), AeFonts.plate, spacing = 0.14f, align = TextAlign.End)
-    val rot = (c.v(25) * 2).roundToInt()
-    arrayOf("STOP", "SLOW", "FAST").forEachIndexed { i, t -> AeChip(c, 25, i, 3, t, 806 + i * 50, 366, 46) }
+    // The right-hand ROTARY chip block that stood here is gone: it was a second rotary control
+    // beside the one in the centre panel, which is exactly the duplication the user rejected. The
+    // centre rotor is the single control for that setting now.
 }

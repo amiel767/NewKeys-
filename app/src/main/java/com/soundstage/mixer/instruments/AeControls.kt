@@ -178,16 +178,21 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
         Canvas(Modifier.size(size.su())) {
             val d = this.size.minDimension
             val r = d / 2f
-            // Dark metal, one soft key light from the upper left, and nothing brighter than that.
-            // The white glare came from drawPlasticKnob's specular; it is toned down at the source.
+            // Dark metal, one soft key light, no white specular. A white oval on the cap reads as
+            // a glare sticker; what tells the value is the pointer line, not a highlight.
             drawCircle(
                 Brush.radialGradient(
-                    listOf(Color(0xFF343941), Color(0xFF1F2228), Color(0xFF121418)),
-                    center = Offset(d * 0.34f, d * 0.30f), radius = d * 0.82f,
+                    listOf(Color(0xFF3A4048), Color(0xFF23272E), Color(0xFF15171B)),
+                    center = Offset(d * 0.36f, d * 0.28f), radius = d * 0.95f,
                 ),
                 r, this.center,
             )
-            drawPlasticKnob(-135f + 270f * c.v(idx), tint = Color(0xFF1B1D23))
+            drawCircle(Color(0x99000000), r * 0.97f, this.center, style = Stroke(d * 0.035f))
+            drawArc(Color(0x1FFFFFFF), 150f, 240f, false, Offset(r * 0.06f, r * 0.06f), Size(d * 0.88f, d * 0.88f), style = Stroke(d * 0.03f, cap = StrokeCap.Round))
+            drawCircle(Color(0x33000000), r * 0.80f, this.center)
+            rotate(-135f + 270f * c.v(idx), this.center) {
+                drawRoundRect(Color(0xFFD8DCE4), Offset(d / 2f - d * 0.028f, d * 0.17f), Size(d * 0.056f, d * 0.26f), CornerRadius(d * 0.028f))
+            }
         }
         AeT(label, 8, AeC.goldDim, Modifier.fillMaxWidth().padding(top = 2.su()), font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center)
     }
@@ -378,10 +383,14 @@ fun AeDrawbar(
             }
         },
     ) {
-        // 9.6 units instead of the mixer rail's 16: same part, 40 % thinner.
+        // 9.6 units instead of the mixer rail's 16: same part, 40 % thinner. The rail is inset at
+        // BOTH ends so each marking gets its own band: the foot label sits above it and the step
+        // number below it. At full height both markings landed on the rail.
+        val railTop = 14f
+        val railH = h.toFloat() - railTop - 24f
         FaderRail(
             accent = Color(0xFFF2F5FA),
-            modifier = Modifier.at(12.2f, 0, 9.6f, h),
+            modifier = Modifier.at(12.2f, railTop, 9.6f, railH),
             level = c.v(idx),
             glow = 0f,
             body = Color(0xFF0C0C10),
@@ -389,6 +398,8 @@ fun AeDrawbar(
         // Foot marking, small and dim: at 8 it competed with the rail, and the cap's own position
         // already carries the reading.
         AeT(foot, 7, Color(0xFF8C7F63), Modifier.at(0, 0.5f, 34, 10), AeFonts.plate, align = TextAlign.Center)
+        // Step number, in the band the short rail leaves free: under the rail, never on it.
+        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 22f, 34, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
         // The cap is clipped to its slot, so it can never ride up over the marking above.
         Box(Modifier.at(0f, 0f, 34, h).clip(RoundedCornerShape(6.su()))) {
             Box(Modifier.at(3f, capY, 28, 30)) {

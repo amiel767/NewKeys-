@@ -130,11 +130,13 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                 { b -> NativeAudioBridge.safePitchBend(strip, ((b.coerceIn(-1f, 1f) + 1f) * 8191.5f).toInt()) }
             }
             when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a, onBend); AeInstrument.LEADS -> AeLeadsUi(c, a, onBend); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
-            // No "ÆTHER <instrument>" caption here. The header pill carries the loaded preset
-            // name, which is what identifies the window; the decorative brand line above it
-            // only competed with the pill. Sax keeps its factory name (its type is a real
-            // distinction between the four chips).
+            // Instrument title. It was removed once ("the pill already identifies the window"),
+            // but the user wants it back: it is the name of the instrument, and the pill is the
+            // name of the preset. Two different things, so both belong here.
             when (s.instrument) {
+                AeInstrument.ORGAN -> AeT("ÆTHER ORGAN", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> {
                     val ty = (c.v(0) * 3).roundToInt().coerceIn(0, 3)
                     AeT(if (ty == 1) "ÆTHER SAX · BULLDOG" else "ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
@@ -165,7 +167,11 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {
-                    val label = if (nameHere) AeInstruments.presetNameOn(strip) ?: s.instrument.title else "PRESETS"
+                    // Read the manager this window was given. AeInstruments.presetNameOn reads the
+                    // app-wide singleton, which is a different instance from the one the window
+                    // renders — that mismatch is why the pill could fall back to the instrument
+                    // title instead of showing the loaded preset.
+                    val label = if (nameHere) manager.presetNameOn(strip) ?: s.instrument.title else "PRESETS"
                     AeT(label, 12, winTh.ink, Modifier.padding(horizontal = 12.su()), ellipsis = nameHere)
                 }
             }
