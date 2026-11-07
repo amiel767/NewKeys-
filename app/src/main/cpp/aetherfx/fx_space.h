@@ -98,7 +98,12 @@ class SpaceReverb : public Effect {
     // gate is transparent; a long attack holds the tail back on short notes, which is what
     // the control means on the reference. Quadratic, because a linear map made the 50 %
     // default a 175 ms fade — audible as a swell on every chord.
-    const float atkA = 1.0f - std::exp(-1.0f / ((0.0008f + 0.30f * att * att) * sr));
+    //
+    // The FLOOR is 1 ms, not the 0.8 ms this used to be: with 0.8 ms the bottom 15 % of
+    // the travel was a single value (measured: 7 dead steps out of 50), because any
+    // attack shorter than the shortest delay line is already "instant". 1 ms keeps the
+    // control monotone right down to zero without lengthening a real attack.
+    const float atkA = 1.0f - std::exp(-1.0f / ((0.001f + 0.35f * att * att) * sr));
     const float relA = 1.0f - std::exp(-1.0f / (0.25f * sr));
     const float preSamp = pre * 0.20f * sr;
     const float apg = 0.35f + 0.35f * lateG;
