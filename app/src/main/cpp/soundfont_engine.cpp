@@ -90,7 +90,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     int effectivePoly = fluid_synth_get_polyphony(mSynth);
     // The arp's clock is in frames, so it needs the real rate: a wrong one shifts
     // every step. Prepared here, on the control thread, before the stream opens.
-    mArp.prepare(static_cast<double>(sampleRate));
+    for (auto &arp : mArps) arp.prepare(static_cast<double>(sampleRate));
     LOGI("[%s] Startup Verification: Requested Polyphony=%d, Effective Polyphony=%d, Interpolation=LINEAR(1), SampleRate=%d",
          mInstanceName.c_str(), mConfiguredPolyphony, effectivePoly, sampleRate);
     return true;
@@ -632,22 +632,24 @@ void SoundfontEngine::drainEvents() {
             noteOnsProcessed++;
         }
         mEventQueue.pop(ev);
-        // The arp sits BETWEEN the player and the engine: a note on its channel
-        // feeds the arp instead of FluidSynth. The arp then emits its own notes,
-        // which are the ones that sound. Same rule as the source router below —
-        // whatever the arp intercepts, FluidSynth must not also receive.
-        const int arpCh = mArpChannel.load(std::memory_order_relaxed);
-        if (arpCh >= 0 && ev.channel == arpCh) {
+        // The arp sits BETWEEN the player and the engine: a note on an armed
+        // channel feeds that channel's arp instead of FluidSynth. The arp then
+        // emits its own notes, which are the ones that sound. Same rule as the
+        // source router below — whatever the arp intercepts, FluidSynth must not
+        // also receive.
+        const uint32_t armedMask = mArpArmedMask.load(std::memory_order_relaxed);
+        if (ev.channel >= 0 && ev.channel < kMaxChannels &&
+            (armedMask & (1u << ev.channel)) != 0) {
             if (ev.type == EngineMidiEvent::NOTE_ON) {
-                mArp.noteIn(ev.note, ev.velocity, true);
+                mArps[ev.channel].noteIn(ev.note, ev.velocity, true);
                 continue;
             }
             if (ev.type == EngineMidiEvent::NOTE_OFF) {
-                mArp.noteIn(ev.note, 0, false);
+                mArps[ev.channel].noteIn(ev.note, 0, false);
                 continue;
             }
             if (ev.type == EngineMidiEvent::ALL_NOTES_OFF || ev.type == EngineMidiEvent::PANIC) {
-                mArp.allNotesOff();
+                mArps[ev.channel].allNotesOff();
                 // Falls through: the synth still needs its own all-notes-off.
             }
         }
@@ -729,11 +731,11 @@ void SoundfontEngine::drainEvents() {
 
 void SoundfontEngine::arpEmit(int frame, int note, int velocity, bool on) {
     if (arpOutCount_ >= kArpMaxOut) return;
-    arpOut_[arpOutCount_++] = ArpNote{frame, note, velocity, on};
+    arpOut_[arpOutCount_++] = ArpNote{frame, arpEmitCurrent_, note, velocity, on};
 }
 
 void SoundfontEngine::applyArpEvent(const ArpNote &e) {
-    const int ch = mArpEmitChannel.load(std::memory_order_relaxed);
+    const int ch = e.channel;
     if (ch < 0) return;
     // The emitted notes take the SAME route as the player's: on a strip that
     // carries an Aether instrument (a Source) the soundfont is paused, so sending
@@ -746,14 +748,40 @@ void SoundfontEngine::applyArpEvent(const ArpNote &e) {
 
 bool SoundfontEngine::runArp(int numFrames) {
     arpOutCount_ = 0;
-    const bool armed = mArpChannel.load(std::memory_order_relaxed) >= 0;
-    const bool flushing = mArpEmitChannel.load(std::memory_order_relaxed) >= 0;
-    if (!armed && !flushing) return false;
-    // Even DISARMED the arp must run once more: removing the effect queues the
+    const uint32_t armedMask = mArpArmedMask.load(std::memory_order_relaxed);
+    uint32_t emitMask = mArpEmitMask.load(std::memory_order_relaxed);
+    if (armedMask == 0 && emitMask == 0) return false;
+    // Even DISARMED an arp must run once more: removing the effect queues the
     // release of the notes it started, and if nothing drained that queue they
-    // would ring forever. The emit channel is what lets those releases out.
-    mArp.process(numFrames, &SoundfontEngine::arpEmitTrampoline, this);
-    if (!armed && arpOutCount_ == 0) mArpEmitChannel.store(-1, std::memory_order_relaxed);
+    // would ring forever. The emit mask is what lets those releases out.
+    const uint32_t live = armedMask | emitMask;
+    for (int ch = 0; ch < kMaxChannels; ++ch) {
+        if ((live & (1u << ch)) == 0) continue;
+        arpEmitCurrent_ = ch;
+        mArps[ch].process(numFrames, &SoundfontEngine::arpEmitTrampoline, this);
+    }
+    arpEmitCurrent_ = -1;
+    // The segmented render walks `arpOut_` in order and advances the FluidSynth
+    // render to each event's frame; two channels emitting into the same block
+    // would otherwise interleave out of order. Insertion sort: the array is tiny
+    // (a few notes per block) and it allocates nothing on the audio thread.
+    for (int i = 1; i < arpOutCount_; ++i) {
+        const ArpNote key = arpOut_[i];
+        int j = i - 1;
+        while (j >= 0 && arpOut_[j].frame > key.frame) { arpOut_[j + 1] = arpOut_[j]; --j; }
+        arpOut_[j + 1] = key;
+    }
+    // A channel that is no longer armed and has nothing left to flush can drop
+    // its emit bit for good.
+    for (int ch = 0; ch < kMaxChannels; ++ch) {
+        if ((armedMask & (1u << ch)) == 0) {
+            // Did this channel emit anything this block? If not, and it is not
+            // armed, its notes are all released: clear the emit bit.
+            bool emitted = false;
+            for (int i = 0; i < arpOutCount_; ++i) if (arpOut_[i].channel == ch) { emitted = true; break; }
+            if (!emitted) mArpEmitMask.fetch_and(~(1u << ch), std::memory_order_relaxed);
+        }
+    }
     return arpOutCount_ > 0;
 }
 

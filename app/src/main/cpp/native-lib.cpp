@@ -159,16 +159,18 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_allNotesOff(
 }
 
 // ---- Arpeggiator -----------------------------------------------------------
-// The arp intercepts ONE channel: notes sent there feed it instead of the synth.
-// It lives on the soundfont engine because that is where the notes already land.
+// ONE arp PER CHANNEL (0..15): any track of a patch can carry one, and several
+// run at once. A note on an armed channel feeds that channel's arp instead of
+// the synth. It lives on the soundfont engine because that is where notes land.
 
 JNIEXPORT void JNICALL
-Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpChannel(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpArmed(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
-        jint channel) {
-    gAudioEngine.getEngine(engineIndex).setArpChannel(channel);
+        jint channel,
+        jboolean armed) {
+    gAudioEngine.getEngine(engineIndex).setArpArmed(channel, armed == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL
@@ -176,9 +178,10 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpParam(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
+        jint channel,
         jint index,
         jfloat norm) {
-    gAudioEngine.getEngine(engineIndex).setArpParam(index, norm);
+    gAudioEngine.getEngine(engineIndex).setArpParam(channel, index, norm);
 }
 
 JNIEXPORT void JNICALL
@@ -195,18 +198,28 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpStep(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
+        jint channel,
         jint index,
         jboolean on,
         jfloat vel) {
-    gAudioEngine.getEngine(engineIndex).setArpStep(index, on == JNI_TRUE, vel);
+    gAudioEngine.getEngine(engineIndex).setArpStep(channel, index, on == JNI_TRUE, vel);
 }
 
 JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_arpAllNotesOff(
         JNIEnv *env,
         jobject /* this */,
+        jint engineIndex,
+        jint channel) {
+    gAudioEngine.getEngine(engineIndex).arpAllNotesOff(channel);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_arpAllNotesOffAll(
+        JNIEnv *env,
+        jobject /* this */,
         jint engineIndex) {
-    gAudioEngine.getEngine(engineIndex).arpAllNotesOff();
+    gAudioEngine.getEngine(engineIndex).arpAllNotesOffAll();
 }
 
 JNIEXPORT void JNICALL

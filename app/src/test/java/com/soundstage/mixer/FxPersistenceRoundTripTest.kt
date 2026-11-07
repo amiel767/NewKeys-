@@ -90,6 +90,40 @@ class FxPersistenceRoundTripTest {
     }
 
     /**
+     * Le slot MIDI est VIDE par defaut : un rack neuf ne precharge aucun arp. On
+     * l'ajoute quand on veut, sur la piste qu'on veut.
+     */
+    @Test
+    fun a_fresh_strip_has_no_arp() {
+        val a = controller(1)
+        assertNull("un rack neuf ne doit porter aucun arp", a.arp)
+        a.restore()
+        assertNull("et rien ne doit apparaitre apres restauration", a.arp)
+    }
+
+    /**
+     * DEUX pistes, DEUX arps. Le moteur porte un arp par canal : deux pistes d'un
+     * meme patch peuvent chacune en avoir un, et leurs reglages ne se melangent
+     * pas. C'est ce qui distingue « un arp par piste » de l'ancien « un seul arp ».
+     */
+    @Test
+    fun two_tracks_can_each_carry_their_own_arp() {
+        val t1 = controller(1)
+        t1.arp = FxPersistence.Arp(sub = 1, steps = 8, present = true, engaged = true)
+        t1.save()
+        val t2 = controller(2)
+        t2.arp = FxPersistence.Arp(sub = 4, steps = 16, present = true, engaged = true)
+        t2.save()
+
+        val r1 = controller(1).apply { restore() }.arp
+        val r2 = controller(2).apply { restore() }.arp
+        assertEquals("la piste 1 garde SON arp", 1, r1?.sub)
+        assertEquals(8, r1?.steps)
+        assertEquals("la piste 2 garde le sien, distinct", 4, r2?.sub)
+        assertEquals(16, r2?.steps)
+    }
+
+    /**
      * Supprimer un effet ne laisse aucun residu : le nom de preset de la case
      * doit disparaitre avec lui, sinon il se collait sur l'effet suivant.
      *

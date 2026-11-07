@@ -2324,6 +2324,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // Also drop the Æther effect tails: allNotesOff only clears the notes, so a
         // delay or reverb with high feedback kept ringing after the panic button.
         NativeAudioBridge.safeFxPanic()
+        // And flush every arp: a panic must stop the notes the arps started too,
+        // otherwise the arp keeps emitting on its next step.
+        NativeAudioBridge.safeArpAllNotesOffAll(NativeAudioBridge.ENGINE_FADER)
         NativeAudioBridge.safeStopAllDrumSamples()
         _uiState.update { state ->
             state.copy(
@@ -5457,16 +5460,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Ré-arme l'arpégiateur du patch actif, SANS ouvrir la fenêtre FX. Un arp est
+     * Ré-arme les arpégiateurs du patch actif, SANS ouvrir la fenêtre FX. Un arp est
      * persistant : il doit revenir armé au démarrage et à chaque changement de
      * patch/setlist, jusqu'à ce qu'on le coupe. La fenêtre n'est qu'un éditeur ;
      * elle ne doit pas être la condition de vie de l'arp.
      *
-     * LE MOTEUR NE PORTE QU'UN ARP : un canal intercepté à la fois. On arme donc
-     * la PREMIÈRE piste du patch qui en porte un vivant, et on s'arrête là — armer
-     * deux canaux ferait silencieusement gagner le dernier, et le premier patch
-     * resterait armé (le chevauchement qu'on veut éviter). Les autres pistes
-     * gardent leur réglage persisté et reprendront la main quand on les activera.
+     * LE MOTEUR PORTE UN ARP PAR CANAL : toute piste d'un patch peut en avoir un, et
+     * plusieurs peuvent tourner ensemble. On arme donc CHAQUE piste du patch qui
+     * porte un arp vivant (carte présente ET allumée) — une piste sans arp, ou dont
+     * l'arp est coupé/retiré, laisse son canal libre. Une carte coupée revient
+     * coupée, une carte retirée ne revient pas.
      */
     private fun restoreArpForActivePatch() {
         val state = _uiState.value
@@ -5483,7 +5486,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             if (arp.present && arp.engaged) {
                 com.soundstage.mixer.fx.ArpEngine.push(strip, arp, bpm)
                 com.soundstage.mixer.fx.ArpEngine.arm(strip, true)
-                return
             }
         }
     }

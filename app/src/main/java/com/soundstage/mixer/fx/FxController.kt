@@ -153,18 +153,19 @@ class FxController(
     fun setMute(mute: Boolean) = safe(Unit, "setMute") { bridge()?.setFxStripMute(strip, mute) }
 
     // ---- arpeggiator -------------------------------------------------------
-    // The arp intercepts ONE MIDI channel: the notes sent there feed it instead
-    // of the synth, and the notes it emits are what sounds. Arming the channel IS
-    // the on/off switch, so the engine has a single source of truth. The channel
-    // is the strip itself for tracks (0..7), 8 for Drum and 9 for the Tonic pad;
-    // the master strip has no channel of its own, so the arp stays off there.
+    // There is ONE arp PER MIDI CHANNEL: the notes sent to an armed channel feed
+    // that channel's arp instead of the synth, and the notes it emits are what
+    // sounds. Arming the channel IS the on/off switch, so the engine has a single
+    // source of truth. The channel is the strip itself for tracks (0..7), 8 for
+    // Drum and 9 for the Tonic pad; the master strip has no channel of its own,
+    // so the arp stays off there. Any track may carry one, and several at once.
     //
     // The actual calls live in [ArpEngine] so the ViewModel can arm an arp at boot
     // and on a patch/setlist switch without depending on this Compose-facing class.
 
     fun setArpArmed(armed: Boolean) = ArpEngine.arm(strip, armed)
 
-    fun arpAllNotesOff() = ArpEngine.allNotesOff()
+    fun arpAllNotesOff() = ArpEngine.allNotesOff(strip)
 
     /** Peak level 0..1 for [channel] (0 = left, 1 = right). Safe to poll at 30 Hz. */
     fun peak(channel: Int): Float = safe(0f, "peak") { bridge()?.fxStripPeak(strip, channel) ?: 0f }

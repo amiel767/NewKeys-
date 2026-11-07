@@ -233,7 +233,7 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
         val card = chain.midi?.takeIf { it.kind == FxKind.Arp }
         val wantArp = card != null && card.on
         if (wantArp) { pushArp(); ArpEngine.arm(engine.strip, true) }
-        else { ArpEngine.arm(engine.strip, false); ArpEngine.allNotesOff() }
+        else { ArpEngine.arm(engine.strip, false); ArpEngine.allNotesOff(engine.strip) }
         // La carte est-elle présente (contournée) ou retirée ? `present` distingue
         // les deux : une carte retirée ne doit pas revenir au redémarrage, une
         // carte coupée doit revenir coupée.
