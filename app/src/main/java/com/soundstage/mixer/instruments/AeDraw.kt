@@ -17,8 +17,7 @@ import kotlin.math.*
 
 /** Animation state, stepped by the window loop (30 fps when active, ~12 fps idle). Canvases read [frame] while drawing only. */
 class AeAnim {
-    var t = 0f; var rot = 0f; var hornA = 0f; var drumA = 0f; var hornS = 0f; var drumS = 0f; var fcm = 0f; var lv = 0f; var seen = 0
-    val gear = FloatArray(24); val gAct = FloatArray(24)
+    var t = 0f; var rot = 0f; var fcm = 0f; var lv = 0f; var seen = 0
     /** Leads LED meters (per layer) and sax breath particles [x, y, vx, vy, life, r] in image-normalised coordinates. */
     val la = FloatArray(5); val parts = ArrayList<FloatArray>()
     /** Retired particles, kept so the breath emitter does not allocate a new FloatArray every frame. */
@@ -45,15 +44,7 @@ class AeAnim {
             val rel = 2.2f - s.values[3] * 1.6f
             for (k in pianoE.indices) pianoE[k] *= exp(-dtc * rel)
         }
-        if (s.instrument == AeInstrument.ORGAN) {
-            for (k in 0 until 24) gAct[k] *= 0.9f
-            s.held.keys.forEach { gAct[((it - 36) % 24 + 24) % 24] = 1f }
-            val m = (s.values[25] * 2).roundToInt().coerceIn(0, 2)
-            hornS += (floatArrayOf(0f, 0.8f, 6.7f)[m] - hornS) * (1f - exp(-dt / 0.7f))
-            drumS += (floatArrayOf(0f, 0.67f, 5.7f)[m] - drumS) * (1f - exp(-dt / 2.4f))
-            hornA += hornS * dt * 6.283f; drumA += drumS * dt * 6.283f
-            for (k in 0 until 24) gear[k] += gAct[k] * dt * (6f + k * 0.9f)
-        } else if (s.instrument == AeInstrument.SYNTH) {
+        if (s.instrument == AeInstrument.SYNTH) {
             val l = orbLevel()
             rot += dt * (0.15f + l * 1.2f)
             if (s.noteEvents.intValue != seen) { seen = s.noteEvents.intValue; pulses.add(floatArrayOf(0f)) }
@@ -74,40 +65,6 @@ class AeAnim {
 }
 
 private fun cl(v: Float) = v.coerceIn(0f, 1f)
-
-// ───────── Organ ─────────
-/** 24 tonewheels, canvas units 600 x 68. A wheel lights and spins while a note that maps to it is held. */
-fun DrawScope.drawTonewheels(a: AeAnim) = scale(size.width / 600f, Offset.Zero) {
-    for (k in 0 until 24) {
-        val x = 25f + k * 24.5f; val y = 34f; val act = a.gAct[k]
-        for (q in 0 until 14) {
-            val an = a.gear[k] + q * 6.2832f / 14f
-            drawLine(Color(red = (160 + act * 95) / 255f, green = (150 + act * 50) / 255f, blue = (120 - act * 60) / 255f, alpha = 0.35f + act * 0.65f),
-                Offset(x + cos(an) * 9f, y + sin(an) * 9f), Offset(x + cos(an) * 14f, y + sin(an) * 14f), 2f)
-        }
-        drawCircle(if (act > 0.05f) Color(1f, (190 + act * 40) / 255f, 90f / 255f, 0.2f + act * 0.5f) else Color(0xFF2A2A30), 8f, Offset(x, y))
-        drawCircle(Color(0xFF8A8F9A), 9.5f, Offset(x, y), style = Stroke(1.4f))
-        if (act > 0.05f) drawCircle(Brush.radialGradient(listOf(Color(1f, 0.78f, 0.39f, act * 0.4f), Color.Transparent), Offset(x, y), 24f), 24f, Offset(x, y))
-    }
-}
-
-/** Rotary speaker in a 58 x 34 box: horn flattens with cos(angle), drum breathes. Acceleration matches the audio smoothing. */
-fun DrawScope.drawRotor(a: AeAnim) = scale(size.width / 58f, Offset.Zero) {
-    drawRoundRect(Color(0xFF0A0A0D), Offset.Zero, Size(58f, 34f), CornerRadius(6f))
-    drawRoundRect(Color(0x22FFFFFF), Offset.Zero, Size(58f, 34f), CornerRadius(6f), style = Stroke(1f))
-    val hx = cos(a.hornA)
-    scale(hx, 1f, Offset(29f, 10.5f)) {
-        drawRoundRect(Brush.horizontalGradient(listOf(Color(0xFF6C7078), Color(0xFFF0F2F6), Color(0xFF4C5058)), 9f, 49f), Offset(9f, 8f), Size(40f, 5f), CornerRadius(2.5f))
-        drawCircle(Color(0xFF222222), 3f, Offset(29f, 10.5f))
-    }
-    val dy = 0.7f + 0.3f * cos(a.drumA)
-    rotate(sin(a.drumA) * 4f, Offset(29f, 24f)) {
-        scale(1f, dy, Offset(29f, 24f)) {
-            drawOval(Color(0xFF16161A), Offset(11f, 18f), Size(36f, 12f))
-            drawOval(Color(0xFFC9B88F), Offset(11f, 18f), Size(36f, 12f), style = Stroke(1f))
-        }
-    }
-}
 
 // ───────── Synth ─────────
 /** The sphere: glow tinted by the cutoff, glass body, orbiting dotted rings that swell with the level, ripple per note. 500 x 500 units. */

@@ -19,11 +19,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.requiredWidth
-import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -52,7 +51,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.soundstage.mixer.R
+import com.soundstage.mixer.ui.components.FaderRail
+import com.soundstage.mixer.ui.components.FaderRailGeo
 import com.soundstage.mixer.ui.components.FaderThumb
+import com.soundstage.mixer.ui.components.v2.swapAxes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -144,62 +146,48 @@ private fun LedBar(widthDp: Float, heightDp: Float) {
     }
 }
 
-/* ======================== FADER VERTICAL (13 × H) ======================== */
+/* ======================== FADER — RAIL DU MIXEUR ======================== */
+/**
+ * Les faders de la section Rotary portent le rail du mixeur ([FaderRail]) : même châssis, même
+ * rainure, mêmes liserés que les faders de tranche. La maquette redessinait ce rail en CSS ; on
+ * ne le redessine plus, on le reprend — et la rainure qu'il dessine devient la référence.
+ *
+ * [FaderRailGeo] donne la position de cette rainure, et le capuchon s'y pose. Le remplissage suit
+ * le centre du capuchon, comme sur le fader du mixeur : le niveau et la poignée ne peuvent donc
+ * pas diverger.
+ */
+private const val RAIL_W = 13f     // largeur du rail (maquette : .fader-wrapper 13px)
+private const val THUMB_W = 20f    // capuchon debout (maquette : .fader-thumb)
+private const val THUMB_H = 26f
+private const val HTHUMB_W = 22f   // capuchon couché (maquette : .h-fader-thumb)
+private const val HTHUMB_H = 18f
+
 @Composable
 internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onValueChange)
     var dragging by remember { mutableStateOf(false) }
-    // La largeur en pixels du fader. La maquette mesure la poignée sur `getBoundingClientRect` :
-    // ici le BoxWithConstraints fait 13 dp de large, mais le parent le contraint à moins (le
-    // rotary n'accorde que ~11 dp par fader). On mesure donc la largeur réellement obtenue, et
-    // la rainure est à sa moitié — c'est ce qui centre la poignée au lieu de la décaler.
-    var widthPx by remember { mutableFloatStateOf(13f) }
-    BoxWithConstraints(modifier.requiredWidth(13.dp).fillMaxHeight().onSizeChanged { widthPx = it.width.toFloat() }) {
-        val h = maxHeight.value
-        val railCx = widthPx / 2f
-        val usable = h - 16f
-        val travel = max(0f, usable - 26f)
-        // Le rail et la rainure ne dépendent pas de la valeur : un drawBehind qui ne lit pas `v`
-        // n'est pas rejoué quand le fader bouge, seul le graphicsLayer du thumb/remplissage l'est.
-        Box(
-            Modifier.fillMaxSize().drawBehind {
-                val d = density
-                val r = Rect(Offset.Zero, size)
-                val c = Corners(4f, 5f, 5f, 4f).scale(d)
-                drawOuterShadow(r, c, shadow(0f, 2f, 4f, black(0.5f)))
-                drawRailV(r, c, d)
-                val g = Rect(size.width / 2 - 1.5f * d, 8f * d, size.width / 2 + 1.5f * d, size.height - 8f * d)
-                drawOuterShadow(g, Corners(1.5f * d), shadow(0f, 1f, 1f, white(0.1f)))
-                drawRoundRect(black(0.6f), g.topLeft, g.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
-                drawInsetShadow(g, Corners(1.5f * d), inset(0f, 2f, 4f, black(0.9f)))
-            },
-        )
-        // remplissage : hauteur = val × usable, ancré en bas à 8. Redimensionné par graphicsLayer
-        // (pas de relayout, pas de redraw du rail) et sans ressort pendant le drag.
+    BoxWithConstraints(modifier.requiredWidth(RAIL_W.dp).fillMaxHeight()) {
+        val d = LocalDensity.current
+        val railWpx = with(d) { RAIL_W.dp.toPx() }
+        val thumbWpx = with(d) { THUMB_W.dp.toPx() }
+        val thumbHpx = with(d) { THUMB_H.dp.toPx() }
+        val hPx = with(d) { maxHeight.toPx() }
+        // Rainure du rail, telle que FaderRail la dessine : le capuchon se pose dessus.
+        val inset = FaderRailGeo.grooveInsetY(railWpx)
+        val gA = inset
+        val gB = hPx - inset
+        val span = (gB - gA).coerceAtLeast(1f)
+        val travel = (span - thumbHpx).coerceAtLeast(0f)
         val fill by animateFloatAsState(v / 100f, if (dragging) tween(0) else spring(0.7f, Spring.StiffnessMedium), label = "vf")
+        // 0 : le bord bas du capuchon touche le bas de la rainure ; 1 : son bord haut touche le
+        // haut. Son centre voyage donc entre gA + h/2 et gB - h/2, et le remplissage suit ce centre.
+        val centre = gA + thumbHpx / 2f + (1f - fill) * travel
+        val level = (1f - (centre - gA) / span).coerceIn(0f, 1f)
+        FaderRail(accent = Acc, modifier = Modifier.fillMaxSize(), level = level, glow = 0.35f)
         Box(
-            Modifier.align(Alignment.BottomStart).offset { IntOffset((railCx - 1.5f * density).roundToInt(), (-8f * density).roundToInt()) }
-                .width(3.dp).height(usable.dp)
-                .graphicsLayer {
-                    val fh = fill * usable * density
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    scaleY = if (usable > 0f) fh / (usable * density) else 0f
-                }
-                .drawBehind {
-                    drawOuterShadow(Rect(Offset.Zero, size), Corners(1.5f * density), shadow(0f, 0f, 6f, Acc))
-                    drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
-                },
-        )
-        // thumb : `requiredSize`, pas `size`. Le parent fait 13 dp de large et `size` y est
-        // contraint : FaderThumb centrait alors son dessin dans 13×26, donc un capot de 13×16
-        // (minuscule). requiredSize garde les 20×26 et le composant s'y dessine à l'échelle.
-        // left = centre de la rainure - 10, pour que la poignée soit centrée sur la rainure.
-        val bottom = 8f + fill * travel
-        val topY = (h - bottom - 26f).coerceIn(0f, max(0f, h - 26f))
-        Box(
-            Modifier.offset { IntOffset((railCx - 10f * density).roundToInt(), (topY * density).roundToInt()) }
-                .requiredSize(20.dp, 26.dp),
+            Modifier.offset { IntOffset(((railWpx - thumbWpx) / 2f).roundToInt(), (centre - thumbHpx / 2f).roundToInt()) }
+                .requiredSize(THUMB_W.dp, THUMB_H.dp),
             contentAlignment = Alignment.Center,
         ) {
             // Le capot vient du composant du mixeur, mais sa LED floutée est large et molle :
@@ -208,16 +196,16 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
             FaderThumb(accent = Acc, modifier = Modifier.fillMaxSize(), showShadow = false, showLed = false)
             LedBar(widthDp = 12f, heightDp = 2f)
         }
-        // zone tactile élargie à 20 dp (le thumb dépasse du rail)
+        // zone tactile : tout le rail, le capuchon dépassant de 3,5 unités de chaque côté.
         Box(
-            Modifier.requiredWidth(20.dp).fillMaxHeight().align(Alignment.Center).pointerInput(Unit) {
+            Modifier.fillMaxSize().pointerInput(hPx, railWpx) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
                     fun upd(y: Float) {
-                        val d = density
-                        val usablePx = size.height - 16f * d
-                        cb(((size.height - 8f * d - y) / usablePx * 100f).coerceIn(0f, 100f))
+                        if (travel <= 0f) return
+                        val c = y.coerceIn(gA + thumbHpx / 2f, gB - thumbHpx / 2f)
+                        cb(((1f - (c - gA - thumbHpx / 2f) / travel) * 100f).coerceIn(0f, 100f))
                     }
                     upd(down.position.y)
                     drag(down.id) { ch -> upd(ch.position.y); ch.consume() }
@@ -228,77 +216,69 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRailV(r: Rect, c: Corners, d: Float) {
-    val brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-        0f to Color(0xFF2D3041), 0.5f to Color(0xFF373A4B), 1f to Color(0xFF474A63), startY = r.top, endY = r.bottom,
-    )
-    drawRRectCorners(r, c, brush)
-    drawInsetShadow(r, c, inset(-1f, 0f, 0f, black(0.16f)))
-    drawInsetShadow(r, c, inset(1f, 0f, 0f, white(0.07f)))
-}
-
 /* ======================== FADER HORIZONTAL BIPOLAIRE (… × 13) ======================== */
+/**
+ * Même rail du mixeur, couché (rotation 90°, comme le fader master). Le remplissage est
+ * bipolaire — il part du MILIEU de la rainure — et suit le centre du capuchon, donc la barre
+ * et la poignée restent d'accord. [FaderRailGeo] donne la rainure du rail couché, et le
+ * capuchon s'y pose au lieu de flotter à côté.
+ */
 @Composable
 internal fun OrganHFader(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onValueChange)
     var dragging by remember { mutableStateOf(false) }
-    BoxWithConstraints(modifier.height(13.dp)) {
-        val w = maxWidth.value
-        val usable = w - 16f
-        val travel = max(0f, usable - 22f)
-        Box(
-            Modifier.fillMaxSize().drawBehind {
-                val d = density
-                val r = Rect(Offset.Zero, size)
-                val c = Corners(6f * d)
-                drawOuterShadow(r, c, shadow(0f, 2f, 4f, black(0.5f)))
-                drawRRectCorners(r, c, androidx.compose.ui.graphics.Brush.horizontalGradient(
-                    0f to Color(0xFF2D3041), 0.5f to Color(0xFF373A4B), 1f to Color(0xFF474A63), startX = 0f, endX = size.width))
-                drawInsetShadow(r, c, inset(0f, -1f, 0f, black(0.16f)))
-                drawInsetShadow(r, c, inset(0f, 1f, 0f, white(0.07f)))
-                val g = Rect(8f * d, size.height / 2 - 1.5f * d, size.width - 8f * d, size.height / 2 + 1.5f * d)
-                drawOuterShadow(g, Corners(1.5f * d), shadow(0f, 1f, 1f, white(0.1f)))
-                drawRoundRect(black(0.6f), g.topLeft, g.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
-                drawInsetShadow(g, Corners(1.5f * d), inset(0f, 2f, 4f, black(0.9f)))
-            },
-        )
-        // remplissage bipolaire depuis le centre, redimensionné par graphicsLayer (transformOrigin
-        // au bord selon le côté) : pas de relayout, et le rail n'est pas redessiné.
+    BoxWithConstraints(modifier.height(RAIL_W.dp)) {
+        val d = LocalDensity.current
+        val railWpx = with(d) { RAIL_W.dp.toPx() }
+        val thumbWpx = with(d) { HTHUMB_W.dp.toPx() }
+        val lPx = with(d) { maxWidth.toPx() }
+        // Rainure du rail couché : [gA, gB] le long de l'axe horizontal.
+        val inset = FaderRailGeo.grooveInsetY(railWpx)
+        val gA = inset
+        val gB = lPx - inset
+        val span = (gB - gA).coerceAtLeast(1f)
+        val travel = (span - thumbWpx).coerceAtLeast(0f)
         val fill by animateFloatAsState(v / 100f, if (dragging) tween(0) else spring(0.7f, Spring.StiffnessMedium), label = "hf")
-        val railC = 8f + usable / 2f
-        val tc = 8f + fill * travel + 11f
-        val right = tc >= railC
+        // centre du capuchon, puis barre bipolaire entre le milieu de la rainure et ce centre
+        val centre = gA + thumbWpx / 2f + fill * travel
+        val railC = (gA + gB) / 2f
+        // Le rail du mixeur, couché : le même composant que les faders de tranche.
         Box(
-            Modifier.align(Alignment.TopStart).offset(x = (if (right) railC else tc).dp, y = 5f.dp)
-                .width(max(0f, if (right) tc - railC else railC - tc).dp).height(3.dp)
-                .drawBehind {
-                    drawOuterShadow(Rect(Offset.Zero, size), Corners(1.5f * density), shadow(0f, 0f, 6f, Acc))
-                    drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
-                },
-        )
-        // thumb : left = 8 + v × travel, en requiredSize pour que le parent (hauteur 13 dp) ne
-        // réduise pas la poignée : FaderThumb s'y dessine 22×18 puis tourné de 90°, donc 18×22.
-        val thumbLeft = (8f + fill * travel).coerceIn(0f, max(0f, w - 22f))
+            Modifier.fillMaxSize().swapAxes().graphicsLayer { rotationZ = 90f; transformOrigin = TransformOrigin(0.5f, 0.5f) },
+        ) {
+            FaderRail(accent = Acc, modifier = Modifier.fillMaxSize(), level = 0f, glow = 0f)
+        }
+        Canvas(Modifier.fillMaxSize()) {
+            val gw = FaderRailGeo.grooveWidth(size.height)
+            val cy = size.height / 2f
+            val a = if (railC < centre) railC else centre
+            val b = if (railC < centre) centre else railC
+            if (b - a > 0.5f) {
+                drawRoundRect(Acc.copy(alpha = 0.35f), Offset(a, cy - gw), Size(b - a, gw * 2f), CornerRadius(gw))
+                drawRoundRect(Acc, Offset(a, cy - gw / 2f), Size(b - a, gw), CornerRadius(gw / 2f))
+            }
+        }
         Box(
-            Modifier.offset { IntOffset((thumbLeft * density).roundToInt(), 0) }.requiredSize(22.dp, 13.dp),
+            Modifier.offset { IntOffset((centre - thumbWpx / 2f).roundToInt(), 0) }.requiredSize(HTHUMB_W.dp, HTHUMB_H.dp),
             contentAlignment = Alignment.Center,
         ) {
             FaderThumb(
-                accent = Acc, modifier = Modifier.requiredSize(18.dp, 22.dp).graphicsLayer { rotationZ = 90f },
+                accent = Acc, modifier = Modifier.requiredSize(HTHUMB_H.dp, HTHUMB_W.dp).graphicsLayer { rotationZ = 90f },
                 showShadow = false, showLed = false,
             )
             // Barre LED verticale (le fader est couché) : 60 % de la hauteur du capot, 2 px de large.
             LedBar(widthDp = 2f, heightDp = 11f)
         }
         Box(
-            Modifier.fillMaxSize().requiredHeight(18.dp).align(Alignment.Center).pointerInput(Unit) {
+            Modifier.fillMaxSize().pointerInput(lPx, railWpx) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragging = true
                     fun upd(x: Float) {
-                        val d = density
-                        cb(((x - 8f * d) / (size.width - 16f * d) * 100f).coerceIn(0f, 100f))
+                        if (travel <= 0f) return
+                        val c = x.coerceIn(gA + thumbWpx / 2f, gB - thumbWpx / 2f)
+                        cb(((c - gA - thumbWpx / 2f) / travel * 100f).coerceIn(0f, 100f))
                     }
                     upd(down.position.x)
                     drag(down.id) { ch -> upd(ch.position.x); ch.consume() }

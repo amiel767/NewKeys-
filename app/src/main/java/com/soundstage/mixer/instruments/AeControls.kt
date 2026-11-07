@@ -30,15 +30,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-import com.soundstage.mixer.ui.components.FaderRail
-import com.soundstage.mixer.ui.components.FaderThumb
 
 /** Binds the controls to one session. All edits go through the manager (state + native engine). */
 class AeCtl(val s: AeSession, val m: AeManager) {
@@ -156,45 +153,6 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
         }
         AeT(label.uppercase(), 9, p.label, Modifier.fillMaxWidth(), spacing = 0.12f, align = TextAlign.Center)
         AeT(c.fmt(idx), 10, AeC.tx, Modifier.fillMaxWidth(), font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
-    }
-}
-
-/**
- * Organ voicing knob: a moulded black-plastic knob on a brushed bezel, filling the same box the
- * SVG knob used.
- *
- * The flat metal SVG is replaced by geometry so the knob has a real barrel, knurled grip and a
- * specular on its top face; the bezel underneath gives it something to sit in, which is what
- * stops a dark knob on a dark panel from reading as a hole. The pointer angle is unchanged
- * (−135° at 0, +135° at 1), so the value a player sees still matches every other knob.
- */
-@Composable
-fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: Number) {
-    val sz = size.toFloat()
-    Column(
-        Modifier.at(x.toFloat() - 13f, y, sz + 26f, sz + 22f).aeKnobInput(c, idx),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Canvas(Modifier.size(size.su())) {
-            val d = this.size.minDimension
-            val r = d / 2f
-            // Dark metal, one soft key light, no white specular. A white oval on the cap reads as
-            // a glare sticker; what tells the value is the pointer line, not a highlight.
-            drawCircle(
-                Brush.radialGradient(
-                    listOf(Color(0xFF3A4048), Color(0xFF23272E), Color(0xFF15171B)),
-                    center = Offset(d * 0.36f, d * 0.28f), radius = d * 0.95f,
-                ),
-                r, this.center,
-            )
-            drawCircle(Color(0x99000000), r * 0.97f, this.center, style = Stroke(d * 0.035f))
-            drawArc(Color(0x1FFFFFFF), 150f, 240f, false, Offset(r * 0.06f, r * 0.06f), Size(d * 0.88f, d * 0.88f), style = Stroke(d * 0.03f, cap = StrokeCap.Round))
-            drawCircle(Color(0x33000000), r * 0.80f, this.center)
-            rotate(-135f + 270f * c.v(idx), this.center) {
-                drawRoundRect(Color(0xFFD8DCE4), Offset(d / 2f - d * 0.028f, d * 0.17f), Size(d * 0.056f, d * 0.26f), CornerRadius(d * 0.028f))
-            }
-        }
-        AeT(label, 8, AeC.goldDim, Modifier.fillMaxWidth().padding(top = 2.su()), font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center)
     }
 }
 
@@ -326,201 +284,6 @@ fun AeSeg(
                     contentAlignment = Alignment.Center,
                 ) { AeT(label, 10, if (on) Color(0xFFF4F7FD) else AeC.mute, weight = if (on) FontWeight.Bold else FontWeight.SemiBold, spacing = 0.04f) }
             }
-        }
-    }
-}
-
-/**
- * Hammond drawbar: the mixer's own [FaderRail] in black with a white groove, and a [FaderThumb] cap
- * tinted brown / white / black.
- *
- * The rail is the same part the channel faders and the Leads faders use — same chassis, rim,
- * groove and shadow — so a drawbar reads as the same hardware. Only its body colour changes
- * (black, not the mixer's grey) and the groove is white. It is 40 % THINNER than that rail: not a
- * smaller rail, a narrower one. The thickness is the Modifier width and everything else (rim,
- * groove, radii) derives from it, so passing a narrower box is enough.
- *
- * The cap is [FaderThumb] too, with its LED off: a drawbar has no light, and the bright band read
- * as a seam across the cap. Its measured relief is kept and only the tint changes.
- */
-@Composable
-fun AeDrawbar(
-    c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number,
-    h: Number = 196, step: Number = 16, limitTop: Number = 0, w: Number = 34,
-) {
-    val sc = LocalAeScale.current
-    val n = (c.v(idx) * 8).roundToInt()
-    // [limitTop] is the y the cap may not rise above, in the parent's coordinates: 0 is the slot
-    // itself, but when a slot sits under a title the caller passes the title's lower edge. Without
-    // it the cap slid up over the number above the rail.
-    val target = maxOf(limitTop.toFloat() - y.toFloat(), 14f + n * step.toFloat())
-    // While the finger is down the cap tracks it with no spring, otherwise a drag feels like it
-    // has to push through the animation. The spring is only for outside changes (preset load,
-    // undo, keyboard), where a small settle reads as mechanical rather than abrupt.
-    var dragging by remember { mutableStateOf(false) }
-    val animated by animateFloatAsState(target, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
-    val capY = if (dragging) target else animated
-    val floorY = limitTop.toFloat() - y.toFloat()
-    // The cap is 0.882 * w tall, so the grab offset is half of that less the 2-unit inset.
-    val capH = 30f * w.toFloat() / 34f
-    fun fromY(py: Float) = (((py / sc) - 14f - (capH / 2f - 2f)) / step.toFloat()).roundToInt().coerceIn(0, 8) / 8f
-    val capTop = when (color) {
-        0 -> Color(0xFF6B3A1C)   // brown
-        1 -> Color(0xFFEDE7DA)   // white
-        else -> Color(0xFF23232B) // black
-    }
-    val capBottom = when (color) {
-        0 -> Color(0xFF3A1D0C)
-        1 -> Color(0xFFA79E8C)
-        else -> Color(0xFF0A0A0E)
-    }
-    Box(
-        Modifier.at(x, y, w, h).pointerInput(idx) {
-            awaitEachGesture {
-                val d = awaitFirstDown(requireUnconsumed = false)
-                dragging = true
-                c.set(idx, fromY(d.position.y)); d.consume()
-                drag(d.id) { c.set(idx, fromY(it.position.y)); it.consume() }
-                dragging = false
-            }
-        },
-    ) {
-        // 9.6 units instead of the mixer rail's 16: same part, 40 % thinner. The rail is inset at
-        // BOTH ends so each marking gets its own band: the foot label sits above it and the step
-        // number below it. At full height both markings landed on the rail.
-        val railTop = 14f
-        val railH = h.toFloat() - railTop - 24f
-        FaderRail(
-            accent = Color(0xFFF2F5FA),
-            modifier = Modifier.at(12.2f * w.toFloat() / 34f, railTop, 9.6f * w.toFloat() / 34f, railH),
-            level = c.v(idx),
-            glow = 0f,
-            body = Color(0xFF0C0C10),
-        )
-        // Foot marking, small and dim: at 8 it competed with the rail, and the cap's own position
-        // already carries the reading.
-        AeT(foot, 7, Color(0xFF8C7F63), Modifier.at(0, 0.5f, w, 10), AeFonts.plate, align = TextAlign.Center)
-        // Step number, in the band the short rail leaves free: under the rail, never on it.
-        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 22f, w, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
-        // The cap is clipped to its slot, so it can never ride up over the marking above.
-        Box(Modifier.at(0f, 0f, w, h).clip(RoundedCornerShape(6.su()))) {
-            Box(Modifier.at(3f * w.toFloat() / 34f, capY, 28f * w.toFloat() / 34f, capH)) {
-                FaderThumb(
-                    accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false,
-                    capTop = capTop, capBottom = capBottom, showLed = false,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Organ on/off tab (percussion, vibrato upper/lower): a moulded plastic tab that physically
- * travels into its well when on, with a lamp beside it.
- *
- * The depth is done with geometry rather than an outline: the well is a recess with a shadowed
- * top lip and a lit bottom lip, the tab is a beveled block that drops 2 units and darkens, and
- * the lamp is a real light source with its own halo. That combination is what makes it read as
- * a part pressed into a panel instead of a rounded rectangle.
- */
-@Composable
-fun AeRocker(c: AeCtl, idx: Int, label: String, x: Number, y: Number, w: Number) {
-    val on = c.v(idx) > 0.5f
-    Box(Modifier.at(x, y, w, 30).noRipple { c.set(idx, if (on) 0f else 1f) }, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val u = size.width / w.toFloat()
-            val ww = w.toFloat()
-            val dy = if (on) 2f * u else 0f
-            // Well: recessed, so the shadow is at the top and the light at the bottom.
-            drawRoundRect(Brush.verticalGradient(listOf(Color(0xFF040406), Color(0xFF15161B))), Offset(u, u), Size(size.width - 2 * u, 28f * u), CornerRadius(6f * u))
-            drawRoundRect(Color(0xAA000000), Offset(2f * u, u), Size(size.width - 4 * u, 3f * u), CornerRadius(2f * u))
-            drawRoundRect(Color(0x1EFFFFFF), Offset(3f * u, 26f * u), Size(size.width - 6f * u, 1.5f * u), CornerRadius(1f * u))
-            // Tab: moulded black plastic, its own top lip lit and its base in shadow.
-            drawRoundRect(
-                Brush.verticalGradient(listOf(Color(0xFF2E3238), Color(0xFF17191D), Color(0xFF0A0B0E))),
-                Offset(3f * u, 3f * u + dy), Size((ww - 6f) * u, 24f * u), CornerRadius(5f * u),
-            )
-            drawRoundRect(Color(0x26FFFFFF), Offset(5f * u, 4.4f * u + dy), Size((ww - 10f) * u, 1.6f * u), CornerRadius(1f * u))
-            drawRoundRect(Color(0x66000000), Offset(5f * u, 25f * u + dy), Size((ww - 10f) * u, 1.6f * u), CornerRadius(1f * u))
-            // Lamp: dark glass with a small amber core when lit. The two wide orange halos that
-            // used to sit here (r 9 and 14 around a 3.4 lens) spilled over the whole tab and read
-            // as a smudge, which is the "ugly light" on the black switches.
-            val lx = ww / 2f
-            val ly = 24f * u
-            drawCircle(
-                Brush.radialGradient(
-                    listOf(if (on) Color(0xFFFFD27A) else Color(0xFF39333B), if (on) Color(0xFFDE8A1C) else Color(0xFF141317)),
-                    center = Offset(lx - 0.5f * u, ly - 0.5f * u), radius = 2.4f * u,
-                ),
-                2.4f * u, Offset(lx, ly),
-            )
-            drawCircle(Color(0x44000000), 2.4f * u, Offset(lx, ly), style = Stroke(0.6f * u))
-        }
-        AeT(label, 8, if (on) AeC.gold else AeC.goldDim, Modifier.padding(bottom = 7.su()), AeFonts.plate, FontWeight.ExtraBold)
-    }
-}
-
-/**
- * Multi-touch keyboard C2..C6 (MIDI 36..84, 4 octaves), glissando between keys, velocity from the touch height.
- * Notes go through the manager (engine + MIDI-style state), so UI and hardware MIDI share the same path.
- *
- * [octaves] sets the span; the reference window draws 3 octaves and the C above.
- */
-@Composable
-fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number, octaves: Int = 3) {
-    val wn = intArrayOf(0, 2, 4, 5, 7, 9, 11)
-    val blackNotes = intArrayOf(1, 3, 6, 8, 10); val blackWhite = intArrayOf(0, 1, 3, 4, 5)
-    val whiteCount = octaves * 7 + 1
-    val blackCount = octaves * 5
-    val lo = 36
-    val hi = lo + octaves * 12
-    val ww = w.toFloat() / whiteCount; val bw = w.toFloat() * (0.046f * 15f / whiteCount); val bh = h.toFloat() * 0.6f
-    fun blackLeft(j: Int) = ((j / 5) * 7 + blackWhite[j % 5] + 1) * ww - w.toFloat() * (0.023f * 15f / whiteCount)
-    fun hit(px: Float, py: Float, sc: Float): Int {
-        val ux = px / sc; val uy = py / sc
-        if (uy < bh) for (j in 0 until blackCount) { val l = blackLeft(j); if (ux >= l && ux <= l + bw) return lo + (j / 5) * 12 + blackNotes[j % 5] }
-        val i = (ux / ww).toInt().coerceIn(0, whiteCount - 1)
-        return if (i == whiteCount - 1) hi else lo + (i / 7) * 12 + wn[i % 7]
-    }
-    val sc = LocalAeScale.current
-    Canvas(
-        Modifier.at(x, y, w, h).clip(RoundedCornerShape(10.su())).pointerInput(c, octaves) {
-            awaitPointerEventScope {
-                val down = HashMap<PointerId, Int>()
-                while (true) {
-                    val ev = awaitPointerEvent()
-                    ev.changes.forEach { ch ->
-                        val note = hit(ch.position.x, ch.position.y, sc)
-                        val vel = (50 + 77 * (ch.position.y / sc / h.toFloat()).coerceIn(0f, 1f)).toInt()
-                        if (ch.pressed) {
-                            val prev = down[ch.id]
-                            if (prev == null) { down[ch.id] = note; c.m.noteOn(c.s.strip, note, vel) }
-                            else if (prev != note) { c.m.noteOff(c.s.strip, prev); down[ch.id] = note; c.m.noteOn(c.s.strip, note, vel) }
-                            ch.consume()
-                        } else down.remove(ch.id)?.let { c.m.noteOff(c.s.strip, it); ch.consume() }
-                    }
-                }
-            }
-        },
-    ) {
-        val u = size.width / w.toFloat()
-        drawRect(Color.Black)
-        for (i in 0 until whiteCount) {
-            val note = if (i == whiteCount - 1) hi else lo + (i / 7) * 12 + wn[i % 7]
-            val on = c.s.held.containsKey(note)
-            drawRect(
-                Brush.verticalGradient(if (on) listOf(Color(0xFFF2D99A), Color(0xFFD9B866)) else listOf(Color(0xFFFBF7EE), Color(0xFFD9D0BE)), 0f, size.height),
-                Offset(i * ww * u, 0f), Size(ww * u, size.height),
-            )
-            drawLine(Color(0x40000000), Offset((i + 1) * ww * u, 0f), Offset((i + 1) * ww * u, size.height), u)
-        }
-        for (j in 0 until blackCount) {
-            val note = lo + (j / 5) * 12 + blackNotes[j % 5]; val on = c.s.held.containsKey(note)
-            drawRoundRect(
-                Brush.verticalGradient(if (on) listOf(Color(0xFF7A6A34), Color(0xFF2A2210)) else listOf(Color(0xFF2C2C36), Color(0xFF0B0B0F)), 0f, bh * u),
-                Offset(blackLeft(j) * u, 0f), Size(bw * u, bh * u), CornerRadius(5f * u),
-            )
-            drawLine(Color(0x14FFFFFF), Offset(blackLeft(j) * u + 2f * u, bh * u - 3f * u), Offset((blackLeft(j) + bw) * u - 2f * u, bh * u - 3f * u), 2f * u)
         }
     }
 }

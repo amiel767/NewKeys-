@@ -62,16 +62,39 @@ fun FaderRail(
     }
 }
 
-private object RailSpec {
+/**
+ * Géométrie de la rainure d'un rail, exprimée en fonction de sa largeur.
+ *
+ * Un capuchon doit se poser EXACTEMENT sur la rainure. Recalculer 17/86 et 36/86 à la main
+ * ailleurs dans le dépôt finit toujours par diverger de ce que [FaderRail] dessine ; ces
+ * fonctions donnent les mêmes valeurs que le dessin, donc un appelant peut aligner un pouce
+ * sur la rainure sans la dupliquer. Tout est proportionnel à la largeur du rail.
+ */
+object FaderRailGeo {
     const val REF_W = 86f
+    const val GROOVE_W = 17f
+    const val GROOVE_INSET_Y = 36f
+
+    /** Échelle du rail : rayons, rainure et liserés en dérivent tous. */
+    fun scale(widthPx: Float) = widthPx / REF_W
+
+    /** Longueur de rainure en tête et en pied, en px, pour un rail de [widthPx] de large. */
+    fun grooveInsetY(widthPx: Float) = GROOVE_INSET_Y * scale(widthPx)
+
+    /** Largeur de la rainure en px. */
+    fun grooveWidth(widthPx: Float) = GROOVE_W * scale(widthPx)
+}
+
+private object RailSpec {
+    const val REF_W = FaderRailGeo.REF_W
 
     const val BODY_R_TOP = 22f
     const val BODY_R_BOTTOM = 30f
     const val BODY_RIM = 1.5f
     const val BODY_RIM_MIN_PX = 1.0f
 
-    const val GROOVE_W = 17f
-    const val GROOVE_INSET_Y = 36f
+    const val GROOVE_W = FaderRailGeo.GROOVE_W
+    const val GROOVE_INSET_Y = FaderRailGeo.GROOVE_INSET_Y
     const val GROOVE_RIM = 1.5f
     const val GROOVE_RIM_MIN_PX = 0.8f
 
