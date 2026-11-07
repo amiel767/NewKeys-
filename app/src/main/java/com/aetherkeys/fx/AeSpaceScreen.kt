@@ -209,7 +209,7 @@ fun AeSpaceScreen(
 
         // ── LE GROS POTARD : DECAY, décalé à GAUCHE pour prendre la place que
         //    MIX et PRE-DELAY occupaient. Appui = ondulations.
-        Box(Modifier.offset(84.dp, 78.dp)) {
+        Box(Modifier.offset(40.dp, 78.dp)) {
             BigDecayKnob(
                 style = style, pal = pal, decay01 = decaySpec.norm(decayShown), t = t, fires = fires,
                 decayText = FxDesign.fmt(decayShown, decaySpec),
@@ -218,21 +218,20 @@ fun AeSpaceScreen(
             )
         }
 
-        // ── LA BARRE DU HAUT : MIX puis PRE-DELAY, juste AU-DESSUS des panneaux et
-        //    à leur aplomb. Chacun est un anneau FIN, son nom et sa valeur à
-        //    DROITE. Ils étaient empilés dans la colonne de gauche, où leur texte
-        //    vertical concurrençait DECAY.
+        // ── LA BARRE DU HAUT : MIX puis PRE-DELAY, à la HAUTEUR DU TITRE. Leur
+        //    taille est libre (aucune contrainte de panneau ne s'applique ici) :
+        //    ils prennent la place disponible en haut, pas celle d'une case.
         Row(
-            Modifier.offset(x = 362.dp, y = 56.dp),
+            Modifier.offset(x = 362.dp, y = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(34.dp),
+            horizontalArrangement = Arrangement.spacedBy(40.dp),
         ) {
             listOf("mix" to 0, "pre" to 1).forEach { (k, ci) ->
                 val spec = fx.byKey[k] ?: return@forEach
                 SpaceRingKnob(
-                    label = spec.name, spec = spec, value = v(k), color = pal[ci], size = 44.dp,
+                    label = spec.name, spec = spec, value = v(k), color = pal[ci], size = 88.dp,
                     onChange = { set(k, it) }, onReset = { set(k, spec.def) },
-                    labelSp = 12.5f, valueSp = 12.5f, horizontal = true,
+                    labelSp = 15f, valueSp = 15f, horizontal = true,
                 )
             }
         }
