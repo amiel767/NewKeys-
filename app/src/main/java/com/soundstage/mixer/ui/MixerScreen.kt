@@ -1029,6 +1029,8 @@ fun MixerScreen(
                         uiState.activePatchId,
                         uiState.activeSceneId.ifEmpty { uiState.activeProjectName },
                     ),
+                    // L'arp suit le tempo global : il vit dans la barre du mixer.
+                    bpm = uiState.bpm,
                 )
             }
             ActivePopup.SOUNDFONT -> {

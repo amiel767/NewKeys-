@@ -342,6 +342,29 @@ int main() {
        "n=" + std::to_string(h.ons().size()));
   }
 
+  printf("11. TABLE DES TAUX (miroir de FxDesign.SUBS)\n");
+  {
+    // L'ordre de `aetherfx::ArpRate` EST celui de la page : Quarter, Eighth,
+    // Sixteenth, ThirtySecond, EighthT, SixteenthT. Chaque index doit produire
+    // exactement la longueur de pas attendue a 120 BPM (48000 Hz).
+    struct { ArpRate r; long want; const char* name; } tbl[] = {
+      {ArpRate::Quarter,      24000, "1/4"},
+      {ArpRate::Eighth,       12000, "1/8"},
+      {ArpRate::Sixteenth,     6000, "1/16"},
+      {ArpRate::ThirtySecond,  3000, "1/32"},
+      {ArpRate::EighthT,       8000, "1/8T"},
+      {ArpRate::SixteenthT,    4000, "1/16T"},
+    };
+    for (auto& e : tbl) {
+      Harness h; setup(h.a, e.r, ArpMode::Up, 1, 0.5f, 0, false);
+      h.a.noteIn(60, 100, true); h.a.noteIn(64, 100, true); h.a.noteIn(67, 100, true);
+      h.run(300);
+      std::vector<long> t; for (auto& ev : h.ev) if (ev.on) t.push_back(ev.frame);
+      long d = t.size() >= 2 ? t[1] - t[0] : -1;
+      ck(d == e.want, std::string("taux ") + e.name + " = pas attendu", std::to_string(d));
+    }
+  }
+
   printf("\n%s (%d echec%s)\n", fails ? "ECHECS" : "TOUT PASSE", fails, fails > 1 ? "s" : "");
   return fails ? 1 : 0;
 }

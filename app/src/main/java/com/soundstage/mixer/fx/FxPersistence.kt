@@ -23,6 +23,18 @@ object FxPersistence {
     private const val KEY_PREFIX = "fx_strip_"
 
     /**
+     * L'appartenance d'un rack FX : le patch s'il existe, sinon le setlist, sinon
+     * rien (clé héritée). Un patch porte ses effets ; deux patches d'un même
+     * setlist ne partagent donc jamais un rack. Partagé par la fenêtre FX et le
+     * ViewModel (qui doit ré-armer l'arpégiateur du patch au démarrage sans ouvrir
+     * la fenêtre).
+     */
+    fun scopeOf(patchId: String?, setlist: String? = null): String =
+        patchId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: setlist?.trim()?.takeIf { it.isNotEmpty() }?.let { "setlist_$it" }
+            ?: ""
+
+    /**
      * A patch (or a setlist's own FX) owns its strips. Keys used to be
      * `fx_strip_<strip>` alone, i.e. ONE rack shared by every patch of every
      * setlist: switching patch left the previous patch's effects installed on
@@ -74,6 +86,14 @@ object FxPersistence {
         val swing: Int = 12,
         val on: List<Boolean> = List(16) { true },
         val vel: List<Float> = List(16) { 1f },
+        /** Longueur des notes en fraction du pas (0.05..1.0). */
+        val gate: Float = 0.7f,
+        /** Étagement sur 1..4 octaves. */
+        val octaves: Int = 2,
+        /** Latche : le motif continue après relâchement des touches. */
+        val hold: Boolean = false,
+        /** Facteur de vélocité global (0.15..1.0). */
+        val velAmt: Float = 0.85f,
         val present: Boolean = true,
         val engaged: Boolean = true,
     )
@@ -110,6 +130,10 @@ object FxPersistence {
                 put("steps", state.arp.steps)
                 put("bpm", state.arp.bpm)
                 put("swing", state.arp.swing)
+                put("gate", state.arp.gate.toDouble())
+                put("octaves", state.arp.octaves)
+                put("hold", state.arp.hold)
+                put("velAmt", state.arp.velAmt.toDouble())
                 put("on", JSONArray(state.arp.on.map { it }))
                 put("vel", JSONArray(state.arp.vel.map { it.toDouble() }))
             })
@@ -161,6 +185,10 @@ object FxPersistence {
                         swing = a.optInt("swing", 12),
                         on = bools(a.optJSONArray("on")),
                         vel = floats(a.optJSONArray("vel")).ifEmpty { List(16) { 1f } },
+                        gate = a.optDouble("gate", 0.7).toFloat(),
+                        octaves = a.optInt("octaves", 2),
+                        hold = a.optBoolean("hold", false),
+                        velAmt = a.optDouble("velAmt", 0.85).toFloat(),
                         present = a.optBoolean("present", true),
                         engaged = a.optBoolean("engaged", true),
                     )

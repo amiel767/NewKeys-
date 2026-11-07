@@ -583,6 +583,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 Log.w("MixerViewModel", "restoreLastOpenedSetlist warning: ${e.message}")
             }
             android.util.Log.d("MIXER_BOOT", "boot state restored; engineStarted=$engineStarted")
+
+            // L'arp est persistant : il doit revenir armé au démarrage, sans qu'on
+            // ouvre la fenêtre FX. On le restaure après la setlist, une fois le
+            // patch actif en place (c'est son arp qu'on veut).
+            try {
+                restoreArpForActivePatch()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "restoreArpForActivePatch warning: ${e.message}")
+            }
             
             // Non-intrusive permission check on startup (Android 11+)
             try {
@@ -3919,6 +3928,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // Un setlist porte ses propres patches : le rack FX du setlist sortant
                 // ne doit pas rester installe sur le moteur pour le setlist entrant.
                 NativeAudioBridge.safeClearFxRacks()
+                // ... et l'arp aussi. On désarme tous les canaux : le setlist entrant
+                // ré-armera les siens après le chargement.
+                com.soundstage.mixer.fx.ArpEngine.disarmAll()
                 NativeAudioBridge.safeTrimMemory()
 
                 val sceneFiles = fileManager.getSceneFiles()
@@ -4307,6 +4319,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 persistCurrentStateDebounced()
+                // Le setlist entrant ré-arme les arps de ses patches (jamais ceux du
+                // sortant : on a tout désarmé en entrant). Un arp est persistant, il
+                // doit revenir vivant sans ouvrir la fenêtre.
+                restoreArpForActivePatch()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -4850,6 +4866,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createNewProject(projectName: String = "Setlist", isBlank: Boolean = true) {
         snapshotTransitionJob?.cancel()
+        // Un projet neuf ne doit pas heriter de l'arp du projet precedent : on
+        // desarme tous les canaux avant de construire l'etat.
+        com.soundstage.mixer.fx.ArpEngine.disarmAll()
         val cleanName = projectName.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
         val defaultPatchId = "patch_${System.currentTimeMillis()}"
         if (isBlank) {
@@ -5299,6 +5318,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // rack appartient au patch : on le defait ici, la fenetre le reconstruira
         // depuis le stockage du patch entrant a sa prochaine ouverture.
         NativeAudioBridge.safeClearFxRacks()
+        // L'arp appartient au patch sortant : on le désarme AVANT de charger le
+        // nouveau, sinon son canal resterait intercepté et avalerait les notes du
+        // patch entrant. Le nouveau patch ré-arme le sien juste après.
+        com.soundstage.mixer.fx.ArpEngine.disarmAll()
         if (state.activePopup == ActivePopup.EFFECTS) {
             _uiState.update { it.copy(activePopup = ActivePopup.NONE) }
         }
@@ -5426,7 +5449,43 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.globalTranspose = snapshotToApply?.globalTranspose ?: targetPatch.transpose
         audioEngine.globalOctaveShift = snapshotToApply?.globalOctaveShift ?: targetPatch.octave
 
+        // Le patch entrant ré-arme SON arp (jamais celui du sortant : on vient de
+        // tout désarmer). Un patch qui n'en porte pas laisse le canal libre.
+        restoreArpForActivePatch()
+
         saveCurrentProjectDirect()
+    }
+
+    /**
+     * Ré-arme l'arpégiateur du patch actif, SANS ouvrir la fenêtre FX. Un arp est
+     * persistant : il doit revenir armé au démarrage et à chaque changement de
+     * patch/setlist, jusqu'à ce qu'on le coupe. La fenêtre n'est qu'un éditeur ;
+     * elle ne doit pas être la condition de vie de l'arp.
+     *
+     * LE MOTEUR NE PORTE QU'UN ARP : un canal intercepté à la fois. On arme donc
+     * la PREMIÈRE piste du patch qui en porte un vivant, et on s'arrête là — armer
+     * deux canaux ferait silencieusement gagner le dernier, et le premier patch
+     * resterait armé (le chevauchement qu'on veut éviter). Les autres pistes
+     * gardent leur réglage persisté et reprendront la main quand on les activera.
+     */
+    private fun restoreArpForActivePatch() {
+        val state = _uiState.value
+        val scope = com.soundstage.mixer.fx.FxPersistence.scopeOf(
+            state.activePatchId,
+            state.activeSceneId.ifEmpty { state.activeProjectName },
+        )
+        if (scope.isEmpty()) return
+        val bpm = state.bpm
+        for (strip in 0..7) {
+            val json = com.soundstage.mixer.fx.FxPersistence.load(appContext, scope, strip) ?: continue
+            val arp = com.soundstage.mixer.fx.FxPersistence
+                .fromJson(json, com.soundstage.mixer.fx.FxRegistry.SLOTS_PER_TRACK)?.arp ?: continue
+            if (arp.present && arp.engaged) {
+                com.soundstage.mixer.fx.ArpEngine.push(strip, arp, bpm)
+                com.soundstage.mixer.fx.ArpEngine.arm(strip, true)
+                return
+            }
+        }
     }
 
     fun deletePatch(patchId: String) {
@@ -5445,6 +5504,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         val updatedPatches = state.patches.filterNot { it.id == patchId || it.name == patchId }
         val nextActivePatch = updatedPatches.lastOrNull()
+        val wasActive = state.activePatchId == patchId || state.activePatchId == state.patches.getOrNull(idx)?.id
         _uiState.update { current ->
             current.copy(
                 patches = updatedPatches,
@@ -5456,6 +5516,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 tracks = nextActivePatch?.tracks ?: current.tracks,
                 audioSlots = nextActivePatch?.audioSlots ?: current.audioSlots
             )
+        }
+        // Si le patch actif disparait, son arp ne doit pas rester arme : on bascule
+        // sur celui du patch qui prend sa place (ou plus rien).
+        if (wasActive) {
+            com.soundstage.mixer.fx.ArpEngine.disarmAll()
+            restoreArpForActivePatch()
         }
         saveCurrentProjectDirect()
     }

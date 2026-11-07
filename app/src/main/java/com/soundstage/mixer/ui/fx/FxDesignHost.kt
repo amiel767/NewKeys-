@@ -28,6 +28,7 @@ import com.aetherkeys.fx.FxSlot
 import com.aetherkeys.fx.FxSlotsController
 import com.aetherkeys.fx.FxSlotsWindow
 import com.aetherkeys.fx.SlotRef
+import com.soundstage.mixer.fx.ArpEngine
 import com.soundstage.mixer.fx.FxController
 import com.soundstage.mixer.fx.FxRegistry
 import com.soundstage.mixer.fx.FxUserStore
@@ -44,9 +45,7 @@ fun stripForTrack(trackId: Int): Int =
  * only a session with neither falls back to the legacy, un-scoped key.
  */
 fun fxScopeOf(patchId: String?, setlist: String? = null): String =
-    patchId?.trim()?.takeIf { it.isNotEmpty() }
-        ?: setlist?.trim()?.takeIf { it.isNotEmpty() }?.let { "setlist_$it" }
-        ?: ""
+    com.soundstage.mixer.fx.FxPersistence.scopeOf(patchId, setlist)
 
 /**
  * L'HÔTE DE LA FENÊTRE FX. Elle est détachée : `FxSlotsWindow` est sa propre
@@ -67,6 +66,7 @@ fun FxDesignHost(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     scope: String = "",
+    bpm: Int = 120,
 ) {
     val strip = stripForTrack(trackId)
     val appContext = LocalContext.current.applicationContext
@@ -82,6 +82,10 @@ fun FxDesignHost(
         model.adoptFromEngine()
     }
 
+    // Le tempo global vit dans la barre du mixer ; l'arp le suit. Un changement de
+    // tempo doit atteindre le moteur même sans toucher la page.
+    LaunchedEffect(bpm) { model.onTempoChanged(bpm) }
+
     // Un drag de potard émet une valeur par frame ; on n'écrit dans les
     // préférences qu'une fois le doigt levé.
     LaunchedEffect(strip, scope) {
@@ -92,21 +96,25 @@ fun FxDesignHost(
             }
     }
 
-    // L'arp pousse son état au moteur dès qu'il est vivant.
+    // L'arp pousse son état au moteur dès qu'il est vivant, et l'écrit une fois le
+    // geste fini : un drag de potard émet une valeur par frame, on ne veut pas une
+    // écriture disque par frame.
     LaunchedEffect(strip, scope) {
         androidx.compose.runtime.snapshotFlow { model.arpRevision() }
-            .collectLatest { if (model.arpIsLive()) model.pushArp() }
+            .collectLatest {
+                if (model.arpIsLive()) model.pushArp()
+                kotlinx.coroutines.delay(600)
+                model.saveArp()
+            }
     }
 
-    // Fermer la fenêtre DÉSARME l'arp : sinon le canal resterait intercepté sans
-    // qu'aucune interface ne le montre. On écrit aussi le rack du patch en partant :
-    // la sauvegarde débattue de 500 ms ne doit pas perdre la dernière édition quand
-    // l'utilisateur change de patch juste après avoir tourné un bouton.
+    // Fermer la fenêtre NE DÉSARME PLUS l'arp. L'arpégiateur doit rester vivant
+    // jusqu'à ce qu'on le désactive explicitement (carte coupée ou retirée) : il
+    // survit au redémarrage, au changement de setlist et au changement de patch.
+    // On écrit seulement le rack du patch en partant, pour ne pas perdre la
+    // dernière édition quand l'utilisateur change de patch juste après.
     DisposableEffect(strip, scope) {
-        onDispose {
-            controller.setArpArmed(false)
-            controller.save()
-        }
+        onDispose { controller.save() }
     }
 
     // Le contrôleur publie un StateFlow : le lire en composition ne recompose
@@ -185,6 +193,14 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
      */
     fun adoptFromEngine() {
         var midi: FxSlot? = null
+        // La carte MIDI : l'arp persiste dans le strip, donc `controller.restore()`
+        // vient de le poser sur `engine.arp`. On reprend ses valeurs ET sa présence.
+        engine.arp?.let { saved ->
+            ArpEngine.applyTo(arp, saved)
+            if (saved.present) {
+                midi = FxSlot(System.nanoTime(), FxKind.Arp, saved.engaged, FxKind.Arp.desc)
+            }
+        }
         val audio = MutableList<FxSlot?>(3) { null }
         engine.effectIds.forEachIndexed { slot, id ->
             if (slot > 2 || id != FxDesign.SPACE.id) return@forEachIndexed
@@ -197,6 +213,10 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
         adopting = true
         fx.adopt(FxChain(midi = midi, audio = audio))
         adopting = false
+        // Le moteur porte-t-il déjà un arp armé (cas du boot) ? Alors la carte est
+        // vivante : on repousse l'état ET on ré-arme, car `adopt` a court-circuité
+        // `applyChain` (donc l'armement) pendant l'adoption.
+        if (midi != null && midi.on) { pushArp(); ArpEngine.arm(engine.strip, true) }
         touch()
     }
 
@@ -210,9 +230,14 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
      */
     private fun applyChain(chain: FxChain) {
         // MIDI : armer, c'est pousser toute la config puis choisir le canal.
-        val wantArp = chain.midi?.kind == FxKind.Arp && chain.midi.on
-        if (wantArp) { pushArp(); engine.setArpArmed(true) }
-        else { engine.setArpArmed(false); engine.arpAllNotesOff() }
+        val card = chain.midi?.takeIf { it.kind == FxKind.Arp }
+        val wantArp = card != null && card.on
+        if (wantArp) { pushArp(); ArpEngine.arm(engine.strip, true) }
+        else { ArpEngine.arm(engine.strip, false); ArpEngine.allNotesOff() }
+        // La carte est-elle présente (contournée) ou retirée ? `present` distingue
+        // les deux : une carte retirée ne doit pas revenir au redémarrage, une
+        // carte coupée doit revenir coupée.
+        persistArp(present = card != null, engaged = wantArp)
 
         // AUDIO
         chain.audio.forEachIndexed { slot, s ->
@@ -245,25 +270,45 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
     fun arpIsLive(): Boolean = fx.state.value.chain.midi?.let { it.kind == FxKind.Arp && it.on } == true
 
     fun arpRevision(): Int = arp.sub * 1_000_003 + arp.style * 100_003 + arp.steps * 10_007 +
-        arp.bpm * 101 + arp.swing + arp.on.count { it } * 31 + arp.vel.sumOf { (it * 1000).toInt() }
+        arp.bpm * 101 + arp.swing + arp.on.count { it } * 31 + arp.vel.sumOf { (it * 1000).toInt() } +
+        arp.gate.toRawBits() + arp.octaves * 7 + (if (arp.hold) 1 else 0) * 11 + arp.velAmt.toRawBits()
 
     fun pushArp() {
-        // Indices [ArpParam] natif : RATE, MODE, OCTAVES, GATE, SWING, HOLD, VELOCITY, STEPS.
-        engine.setArpParam(1, arp.sub / 3f)
-        val mode = when (arp.style) { 1 -> 1f; 2 -> 2f; 3 -> 4f; else -> 0f }
-        engine.setArpParam(2, mode / 5f)
-        engine.setArpParam(3, 0f)
-        engine.setArpParam(4, 0.5f)
-        engine.setArpParam(5, arp.swing / 100f)
-        engine.setArpParam(6, 0f)
-        engine.setArpParam(7, 0.85f)
-        engine.setArpParam(8, (arp.steps - 1).coerceIn(0, 15) / 15f)
-        engine.setArpTempo(arp.bpm.toDouble())
-        for (i in 0 until 16) {
-            val on = i < arp.steps && arp.on.getOrElse(i) { true }
-            val vel = if (i < arp.steps) arp.vel.getOrElse(i) { 1f } else 0f
-            engine.setArpStep(i, on, vel)
+        // Le champ persistant du contrôleur doit refléter l'état courant : la
+        // sauvegarde débattue de 500 ms écrit CE champ, donc un réglage de grille
+        // tourné après l'armement ne serait jamais enregistré s'il restait vide.
+        engine.arp = ArpEngine.toPersisted(arp, present = true, engaged = arpIsLive())
+        ArpEngine.push(engine.strip, engine.arp!!, arp.bpm)
+    }
+
+    /** Un changement de tempo global atteint l'arp sans passer par la page. */
+    fun onTempoChanged(bpm: Int) {
+        if (bpm == arp.bpm) return
+        arp.bpm = bpm
+        if (arpIsLive()) {
+            engine.arp = ArpEngine.toPersisted(arp, present = true, engaged = true)
+            ArpEngine.push(engine.strip, engine.arp!!, bpm)
         }
+    }
+
+    /**
+     * Écrit l'arp dans le rack persisté. Appelé après un geste (la grille, un
+     * potard) ET à l'armement/la coupure. `present` reste vrai tant que la carte
+     * est là ; l'appel direct à `applyChain` gère la disparition.
+     */
+    fun saveArp() {
+        engine.arp = ArpEngine.toPersisted(arp, present = true, engaged = arpIsLive())
+        engine.save()
+    }
+
+    /**
+     * L'arp est persistant : on l'écrit à chaque fois qu'on l'arme ou le coupe,
+     * pas seulement à la fermeture de la fenêtre. Sans ça, un arp laissé armé
+     * puis quitté par un changement de patch ne survivait pas au redémarrage.
+     */
+    private fun persistArp(present: Boolean, engaged: Boolean) {
+        engine.arp = ArpEngine.toPersisted(arp, present, engaged)
+        engine.save()
     }
 
     // ---- éditeur Space -----------------------------------------------------
