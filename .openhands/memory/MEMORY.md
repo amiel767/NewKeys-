@@ -316,3 +316,21 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   erreurs JS en « Script error. » -> servir en http pour lire la vraie erreur.
   Mesure : `tools/design/{refscan,refmap,refpanels}.py`.
 - Branche `test/organ-design` (commit `2cdcf2d`) ; page de revue `/workspace/dl/pub/organ/`.
+
+## Session 2026-11-07 — UI orgue du zip integree (a4b5df3)
+- **Le zip de l'utilisateur = `app/assets/organ_ui_kotlin.zip`** (commit `56a741f`,
+  amiel767, sur `origin/main`), PAS `fx_organ_source.zip`. 6 .kt + 14 drawables +
+  generateurs Node. Cible `com/aetherkeys/organ/` (package `com.aetherkeys.organ`).
+- `AeOrganUi.kt` = GABARIT (cases vides) ; le zip = rendu reel. `OrganListener`
+  = le contrat moteur (drawbars, perc, vibrato, rotary, cabinet, knobs, faders,
+  octave, reverb, modele, preset). 16 presets dans `OrganState.kt`.
+- **Le zip n'avait jamais compile** (19 erreurs). 4 pieges reutilisables :
+  (1) local `val density = LocalDensity.current` masque le Float `density` de
+  DrawScope ; (2) `maxHeight` perdu dans une lambda imbriquee (recepteur implicite) ;
+  (3) lambda finale `OrganKnob(v) { }` se lie a `modifier`, pas a `onValueChange` ;
+  (4) `var x` + `fun setX(..)` = collision de signature JVM -> renommer la fonction.
+- Adaptations : `com.aetherkeys.R` -> `com.soundstage.mixer.R` ; `PlexMono` ->
+  `res/font/share_tech_mono` (mono du depot). Gen. Node -> `tools/organui/`.
+- **Verifie : `:app:compileDebugKotlin` BUILD SUCCESSFUL.** Detail : log 2026-11-07.
+- Build : `--offline` echoue (plugin foojay non cache) ; job `&` suspendu par le
+  shell -> relancer en avant-plan pour le code de sortie.
