@@ -392,6 +392,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private var engineStarted = false
 
+    /**
+     * Nom de la setlist a rouvrir au prochain demarrage. Pose pendant la
+     * restauration de l'etat (le scan des setlists n'a pas encore tourne a ce
+     * moment-la), consomme par [restoreLastOpenedSetlist] juste apres.
+     */
+    private var pendingSetlistRestore: String? = null
+
     private fun ensureEngineStarted() {
         if (engineStarted) return
         engineStarted = true
@@ -567,6 +574,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "refreshStorageFiles warning: ${e.message}")
             }
+            // Le scan des setlists est termine : on peut rouvrir celle qui etait
+            // ouverte a la fermeture. C'est ce qui fait revenir la setlist ET le
+            // patch actifs, donc le rack FX qui y est rattache.
+            try {
+                restoreLastOpenedSetlist()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "restoreLastOpenedSetlist warning: ${e.message}")
+            }
             android.util.Log.d("MIXER_BOOT", "boot state restored; engineStarted=$engineStarted")
             
             // Non-intrusive permission check on startup (Android 11+)
@@ -582,14 +597,34 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Rouvre la setlist qui etait ouverte a la fermeture, avec son patch actif.
+     *
+     * L'etat persiste porte deja la setlist et le patch ; sans cette passe, le boot
+     * revenait toujours sur l'ecran Setlists avec une setlist vide, et l'utilisateur
+     * retrouvait un mixer different de celui qu'il avait laisse. On ne restaure QUE
+     * si la setlist existe encore sur disque, pour ne pas ouvrir une setlist supprimee.
+     */
+    private suspend fun restoreLastOpenedSetlist() {
+        // `pendingSetlistRestore` vient du blob d'etat, ecrit par TOUS les chemins
+        // d'ouverture ; `setlist_last_opened` ne l'est que par l'ecran Setlists et
+        // sert de repli pour les etats plus anciens.
+        val name = pendingSetlistRestore ?: _uiState.value.lastOpenedSetlistId ?: return
+        val target = _uiState.value.scenes.find { it.id == name || it.name == name } ?: return
+        withContext(Dispatchers.Main) { openProject(target.name) }
+    }
+
     private fun restoreSavedAppState() {
         try {
             val saved = appStatePersistence.loadAppState()
             if (saved != null) {
-                // Démarrage: ne jamais restaurer de Setlist active automatiquement.
-                // L'utilisateur doit en choisir une explicitement pour que l'audio démarre.
+                // La setlist active n'est pas posee ici : `restoreLastOpenedSetlist`
+                // la rouvre APRÈS le scan des setlists (elle a besoin de `scenes`).
+                // C'est volontaire — le scan lit le disque, et rouvrir avant lui
+                // n'aurait rien a ouvrir.
                 val hasActive = false
                 val restoredProjectName = ""
+                pendingSetlistRestore = saved.activeProjectName?.takeIf { it.isNotEmpty() && it != "None" }
 
                 _uiState.update { state ->
                     val restoredTheme = saved.themeName?.let { name ->

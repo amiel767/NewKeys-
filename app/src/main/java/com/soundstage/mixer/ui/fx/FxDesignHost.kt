@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +30,7 @@ import com.aetherkeys.fx.FxSlotsWindow
 import com.aetherkeys.fx.SlotRef
 import com.soundstage.mixer.fx.FxController
 import com.soundstage.mixer.fx.FxRegistry
+import com.soundstage.mixer.fx.FxUserStore
 
 /** FX strip for a mixer track: tracks 1..8 map to strips 0..7, track 0 is master. */
 fun stripForTrack(trackId: Int): Int =
@@ -156,8 +156,6 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
     }
 
     private val presets = mutableStateMapOf<Int, String?>()
-    private val user = mutableStateMapOf<Int, SnapshotStateList<String>>()
-    private val userValues = mutableStateMapOf<Int, Map<String, List<Float>>>()
     private var custom by mutableStateOf(false)
 
     /** L'instantané pris à l'ouverture d'un éditeur : « Discard » y revient. */
@@ -277,7 +275,7 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
             fx = info,
             values = spaceValues.toList(),
             presetName = presets[info.id],
-            userNames = user[info.id]?.toList() ?: emptyList(),
+            userNames = FxUserStore.load(info.id).map { it.name },
             custom = custom,
             onValue = { i, v -> setValue(ref, i, v) },
             onPreset = { pickPreset(it) },
@@ -304,7 +302,7 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
 
     private fun pickPreset(name: String) {
         val info = FxDesign.SPACE
-        val table = info.presets[name] ?: userValues[info.id]?.get(name)
+        val table = info.presets[name] ?: FxUserStore.load(info.id).firstOrNull { it.name == name }?.values
         if (table != null) {
             table.forEachIndexed { i, x -> if (i < spaceValues.size) spaceValues[i] = x }
             val index = info.presets.keys.indexOf(name)
@@ -312,6 +310,7 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
             if (slot != null) {
                 if (index >= 0 && index < FxRegistry.info(info.id).presets.size) engine.applyPreset(slot, index)
                 else pushSpace(slot)
+                engine.presetNames[slot] = name
             }
         }
         presets[info.id] = name
@@ -322,18 +321,17 @@ private class FxHostModel(private val engine: FxController, trackId: Int) {
 
     private fun savePreset(name: String) {
         val id = FxDesign.SPACE.id
-        val clean = name.trim().ifEmpty { "User ${(user[id]?.size ?: 0) + 1}" }
-        user.getOrPut(id) { mutableStateListOf() }.let { if (clean !in it) it.add(clean) }
-        userValues[id] = (userValues[id] ?: emptyMap()) + (clean to spaceValues.toList())
+        val clean = name.trim().ifEmpty { "User ${FxUserStore.load(id).size + 1}" }
+        FxUserStore.put(id, clean, spaceValues.toList())
         presets[id] = clean
+        spaceSlot?.let { engine.presetNames[it] = clean }
         custom = false
         touch()
     }
 
     private fun deletePreset(name: String) {
         val id = FxDesign.SPACE.id
-        user[id]?.remove(name)
-        userValues[id] = (userValues[id] ?: emptyMap()) - name
+        FxUserStore.delete(id, name)
         if (presets[id] == name) presets[id] = FxDesign.SPACE.presets.keys.firstOrNull()
         touch()
     }

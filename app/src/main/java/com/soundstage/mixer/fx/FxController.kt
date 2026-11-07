@@ -241,16 +241,22 @@ class FxController(
             saved.instrumentParams.forEachIndexed { i, v -> setInstrumentParam(i, v) }
         }
         saved.effects.forEachIndexed { slot, entry ->
-            if (entry != null && setEffect(slot, entry.id)) {
-                // The saved values must reach the engine, not just the Kotlin list.
-                // Writing `params[slot][i]` alone left the native effect on its
-                // registry defaults, so after a restart the UI showed the stored
-                // knob positions while the audio played something else until the
-                // user touched every knob.
-                entry.params.forEachIndexed { i, v ->
-                    if (i < params[slot].size) setEffectParam(slot, i, v)
+            if (entry != null) {
+                // Le nom du preset est une metadonnee de la case : il se restaure
+                // meme si le moteur refuse l'installation (pas de pont natif), sinon
+                // la case revenait vide alors que le son etait le bon.
+                if (slot < presetNames.size) presetNames[slot] = entry.preset
+                if (setEffect(slot, entry.id)) {
+                    // The saved values must reach the engine, not just the Kotlin list.
+                    // Writing `params[slot][i]` alone left the native effect on its
+                    // registry defaults, so after a restart the UI showed the stored
+                    // knob positions while the audio played something else until the
+                    // user touched every knob.
+                    entry.params.forEachIndexed { i, v ->
+                        if (i < params[slot].size) setEffectParam(slot, i, v)
+                    }
+                    if (entry.bypass) setBypass(slot, true)
                 }
-                if (entry.bypass) setBypass(slot, true)
             }
         }
         abA = saved.abA?.toFloatArray()
