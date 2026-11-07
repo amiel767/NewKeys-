@@ -1,7 +1,11 @@
 package com.aetherkeys.organ
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
@@ -36,8 +40,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -45,6 +51,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.soundstage.mixer.R
+import com.soundstage.mixer.ui.components.FaderThumb
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -60,12 +67,14 @@ internal fun PaddedVector(res: Int, w: Float, h: Float, pad: Float, modifier: Mo
     }
 }
 
-/** Point LED (dot) : éteint = creux, allumé = couleur + lueur. */
+/** Point LED (dot) : éteint = creux, allumé = couleur + lueur. La couleur est interpolée, donc
+ * l'allumage/extinction se voit comme une transition, pas comme un saut. */
 @Composable
 internal fun LedDot(size: Float, on: Boolean, color: Color = Acc, offColor: Color = OrganColors.Dark2, glow: Float = 5f, modifier: Modifier = Modifier) {
+    val c by animateColorAsState(if (on) color else offColor, tween(160), label = "led")
     Box(
         modifier.size(size.dp).cssBox(
-            radius = size / 2, fill = solid(if (on) color else offColor),
+            radius = size / 2, fill = solid(c),
             shadows = if (on) listOf(shadow(0f, 0f, glow, color)) else listOf(inset(0f, 1f, 2f, black(0.8f))),
         ),
     )
@@ -125,40 +134,59 @@ internal fun OrganKnob(size: Int, value: Float, onValueChange: (Float) -> Unit, 
 internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onValueChange)
+    var dragging by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.width(13.dp).fillMaxHeight()) {
         val h = maxHeight.value
         val usable = h - 16f
         val travel = max(0f, usable - 26f)
+        // Le rail et la rainure ne dépendent pas de la valeur : un drawBehind qui ne lit pas `v`
+        // n'est pas rejoué quand le fader bouge, seul le graphicsLayer du thumb/remplissage l'est.
         Box(
             Modifier.fillMaxSize().drawBehind {
                 val d = density
                 val r = Rect(Offset.Zero, size)
                 val c = Corners(4f, 5f, 5f, 4f).scale(d)
                 drawOuterShadow(r, c, shadow(0f, 2f, 4f, black(0.5f)))
-                // rail
                 drawRailV(r, c, d)
-                // rainure
                 val g = Rect(size.width / 2 - 1.5f * d, 8f * d, size.width / 2 + 1.5f * d, size.height - 8f * d)
                 drawOuterShadow(g, Corners(1.5f * d), shadow(0f, 1f, 1f, white(0.1f)))
                 drawRoundRect(black(0.6f), g.topLeft, g.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
                 drawInsetShadow(g, Corners(1.5f * d), inset(0f, 2f, 4f, black(0.9f)))
-                // remplissage : hauteur = val × usable, ancré en bas à 8
-                val fh = (v / 100f) * usable * d
-                if (fh > 0f) {
-                    val f = Rect(g.left, size.height - 8f * d - fh, g.right, size.height - 8f * d)
-                    drawOuterShadow(f, Corners(1.5f * d), shadow(0f, 0f, 6f, Acc))
-                    drawRoundRect(Acc, f.topLeft, f.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
-                }
             },
         )
-        // thumb 20×26 : bottom = 8 + val × travel
-        val bottom = 8f + (v / 100f) * travel
-        Box(Modifier.offset((-3.5f).dp, (h - bottom - 26f).dp)) { PaddedVector(R.drawable.organ_fader_thumb_v, 20f, 26f, 12f) }
+        // remplissage : hauteur = val × usable, ancré en bas à 8. Redimensionné par graphicsLayer
+        // (pas de relayout, pas de redraw du rail) et sans ressort pendant le drag.
+        val fill by animateFloatAsState(v / 100f, if (dragging) tween(0) else spring(0.7f, Spring.StiffnessMedium), label = "vf")
+        Box(
+            Modifier.align(Alignment.BottomStart).offset(x = 5f.dp, y = (-8).dp)
+                .width(3.dp).height(usable.dp)
+                .graphicsLayer {
+                    val fh = fill * usable * density
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    scaleY = if (usable > 0f) fh / (usable * density) else 0f
+                }
+                .drawBehind {
+                    drawOuterShadow(Rect(Offset.Zero, size), Corners(1.5f * density), shadow(0f, 0f, 6f, Acc))
+                    drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
+                },
+        )
+        // thumb : centré sur le rail (left = 6.5 - 20/2 = -3.5), borné à [8, h-34] pour ne jamais
+        // déborder du panneau, ni en haut ni en bas.
+        val bottom = 8f + fill * travel
+        val topY = (h - bottom - 26f).coerceIn(0f, max(0f, h - 26f))
+        Box(
+            Modifier.offset { IntOffset((-3.5f * density).roundToInt(), (topY * density).roundToInt()) }
+                .size(20.dp, 26.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            FaderThumb(accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false, showLed = false)
+        }
         // zone tactile élargie à 20 dp (le thumb dépasse du rail)
         Box(
             Modifier.requiredWidth(20.dp).fillMaxHeight().align(Alignment.Center).pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    dragging = true
                     fun upd(y: Float) {
                         val d = density
                         val usablePx = size.height - 16f * d
@@ -166,6 +194,7 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
                     }
                     upd(down.position.y)
                     drag(down.id) { ch -> upd(ch.position.y); ch.consume() }
+                    dragging = false
                 }
             },
         )
@@ -186,6 +215,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRailV(r: Rect, 
 internal fun OrganHFader(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onValueChange)
+    var dragging by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.height(13.dp)) {
         val w = maxWidth.value
         val usable = w - 16f
@@ -204,30 +234,42 @@ internal fun OrganHFader(value: Float, onValueChange: (Float) -> Unit, modifier:
                 drawOuterShadow(g, Corners(1.5f * d), shadow(0f, 1f, 1f, white(0.1f)))
                 drawRoundRect(black(0.6f), g.topLeft, g.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
                 drawInsetShadow(g, Corners(1.5f * d), inset(0f, 2f, 4f, black(0.9f)))
-                // remplissage bipolaire depuis le centre
-                val thumbLeft = 8f + (v / 100f) * travel
-                val tc = thumbLeft + 11f
-                val rc = 8f + usable / 2f
-                val (fl, fw) = if (tc >= rc) rc to (tc - rc) else tc to (rc - tc)
-                if (fw > 0f) {
-                    val f = Rect(fl * d, g.top, (fl + fw) * d, g.bottom)
-                    drawOuterShadow(f, Corners(1.5f * d), shadow(0f, 0f, 6f, Acc))
-                    drawRoundRect(Acc, f.topLeft, f.size, androidx.compose.ui.geometry.CornerRadius(1.5f * d))
-                }
             },
         )
-        val thumbLeft = 8f + (v / 100f) * travel
-        Box(Modifier.offset(thumbLeft.dp, (-2.5f).dp)) { PaddedVector(R.drawable.organ_fader_thumb_h, 22f, 18f, 12f) }
+        // remplissage bipolaire depuis le centre, redimensionné par graphicsLayer (transformOrigin
+        // au bord selon le côté) : pas de relayout, et le rail n'est pas redessiné.
+        val fill by animateFloatAsState(v / 100f, if (dragging) tween(0) else spring(0.7f, Spring.StiffnessMedium), label = "hf")
+        val railC = 8f + usable / 2f
+        val tc = 8f + fill * travel + 11f
+        val right = tc >= railC
+        Box(
+            Modifier.align(Alignment.TopStart).offset(x = (if (right) railC else tc).dp, y = 5f.dp)
+                .width(max(0f, if (right) tc - railC else railC - tc).dp).height(3.dp)
+                .drawBehind {
+                    drawOuterShadow(Rect(Offset.Zero, size), Corners(1.5f * density), shadow(0f, 0f, 6f, Acc))
+                    drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
+                },
+        )
+        // thumb : left = 8 + v × travel, borné pour rester dans la largeur du panneau.
+        val thumbLeft = (8f + fill * travel).coerceIn(0f, max(0f, w - 22f))
+        Box(Modifier.offset { IntOffset((thumbLeft * density).roundToInt(), 0) }.size(22.dp, 13.dp), contentAlignment = Alignment.Center) {
+            FaderThumb(
+                accent = Color.Transparent, modifier = Modifier.size(18.dp, 22.dp).graphicsLayer { rotationZ = 90f },
+                showShadow = false, showLed = false,
+            )
+        }
         Box(
             Modifier.fillMaxSize().requiredHeight(18.dp).align(Alignment.Center).pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    dragging = true
                     fun upd(x: Float) {
                         val d = density
                         cb(((x - 8f * d) / (size.width - 16f * d) * 100f).coerceIn(0f, 100f))
                     }
                     upd(down.position.x)
                     drag(down.id) { ch -> upd(ch.position.x); ch.consume() }
+                    dragging = false
                 }
             },
         )

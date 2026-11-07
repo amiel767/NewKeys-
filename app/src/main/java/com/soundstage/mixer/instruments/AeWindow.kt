@@ -129,12 +129,14 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             val onBend: (Float) -> Unit = remember(strip) {
                 { b -> NativeAudioBridge.safePitchBend(strip, ((b.coerceIn(-1f, 1f) + 1f) * 8191.5f).toInt()) }
             }
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a, onBend); AeInstrument.LEADS -> AeLeadsUi(c, a, onBend); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganScreen(c); AeInstrument.SYNTH -> AeSynthUi(c, a, onBend); AeInstrument.LEADS -> AeLeadsUi(c, a, onBend); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
             // Instrument title. It was removed once ("the pill already identifies the window"),
             // but the user wants it back: it is the name of the instrument, and the pill is the
             // name of the preset. Two different things, so both belong here.
             when (s.instrument) {
-                AeInstrument.ORGAN -> AeT("OrganLab", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                // The organ panel fills the stage edge to edge and carries its own preset display and
+                // section titles, so the shell adds no title on top of it.
+                AeInstrument.ORGAN -> Unit
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> {
@@ -163,7 +165,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // gets a second readout. Geometry is unchanged, so the Save pill that appears left of it
             // when a knob has moved cannot collide.
             val nameHere = s.instrument in NAME_IN_HEADER
-            if (!AeSections.isKeyboardLike(s.instrument) && s.instrument != AeInstrument.SAX) {
+            if (!AeSections.isKeyboardLike(s.instrument) && s.instrument != AeInstrument.SAX && s.instrument != AeInstrument.ORGAN) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {

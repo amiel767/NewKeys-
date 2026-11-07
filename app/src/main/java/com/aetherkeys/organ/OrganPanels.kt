@@ -4,6 +4,7 @@ package com.aetherkeys.organ
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -89,27 +90,40 @@ internal fun PanelTitle(text: String) {
     Text(text.uppercase(), style = otext(8f, FontWeight.ExtraBold, C.TextSub, ls = 1f, lh = 9.7f), modifier = Modifier.graphicsLayer { alpha = 0.7f })
 }
 
+/** Interrupteur maître ON/OFF : couleurs et libellé interpolés, donc l'état change en fondu
+ * au lieu de sauter. Les deux libellés sont superposés pour que la largeur ne bouge pas. */
 @Composable
 private fun MasterToggle(active: Boolean, onClick: () -> Unit) {
+    val fill by animateColorAsState(if (active) Color(0x1A8FB2E8) else C.Dark1, tween(180), label = "mtf")
+    val border by animateColorAsState(if (active) C.Accent else white(0.1f), tween(180), label = "mtb")
+    val dot by animateColorAsState(if (active) C.Accent else C.Dark2, tween(180), label = "mtd")
+    val ink by animateColorAsState(if (active) C.TextMain else C.TextSub, tween(180), label = "mtt")
+    val onA by animateFloatAsState(if (active) 1f else 0f, tween(160), label = "mta")
     PressBox(
         Modifier.cssBox(
-            radius = 4f, fill = solid(if (active) Color(0x1A8FB2E8) else C.Dark1),
-            border = if (active) C.Accent else white(0.1f),
+            radius = 4f, fill = solid(fill), border = border,
+            shadows = if (active) listOf(shadow(0f, 0f, 4f, C.Accent)) else emptyList(),
         ), pressShift = 0f, onClick = onClick,
     ) {
         Row(Modifier.padding(horizontal = 4.dp, vertical = 1.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(3.dp).cssBox(radius = 1.5f, fill = solid(if (active) C.Accent else C.Dark2), shadows = if (active) listOf(shadow(0f, 0f, 4f, C.Accent)) else emptyList()))
-            Text(if (active) "ON" else "OFF", style = otext(7f, FontWeight.ExtraBold, if (active) C.TextMain else C.TextSub, lh = 8.5f), maxLines = 1, softWrap = false)
+            Box(Modifier.size(3.dp).cssBox(radius = 1.5f, fill = solid(dot)))
+            Box(contentAlignment = Alignment.Center) {
+                Text("OFF", Modifier.graphicsLayer { alpha = 1f - onA }, style = otext(7f, FontWeight.ExtraBold, ink, lh = 8.5f), maxLines = 1, softWrap = false)
+                Text("ON", Modifier.graphicsLayer { alpha = onA }, style = otext(7f, FontWeight.ExtraBold, ink, lh = 8.5f), maxLines = 1, softWrap = false)
+            }
         }
     }
 }
 
 @Composable
 private fun ToggleBtn(label: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val top by animateColorAsState(if (active) C.BtnTop else C.Dark2, tween(180), label = "tbt")
+    val bot by animateColorAsState(if (active) C.BtnBottom else C.Dark1, tween(180), label = "tbb")
+    val ink by animateColorAsState(if (active) C.TextMain else C.TextSub, tween(180), label = "tbi")
     PressBox(modifier, 1f, onClick) { pressed ->
         Box(
             Modifier.fillMaxSize().cssBox(
-                radius = 4f, fill = if (active) vGrad(C.BtnTop, C.BtnBottom) else vGrad(C.Dark2, C.Dark1), border = white(0.08f),
+                radius = 4f, fill = vGrad(top, bot), border = white(0.08f),
                 shadows = when {
                     pressed && !active -> listOf(inset(0f, 2f, 4f, black(0.6f)))
                     active -> listOf(inset(0f, 1f, 0f, white(0.1f)), shadow(0f, 1f, 2f, black(0.3f)))
@@ -120,7 +134,7 @@ private fun ToggleBtn(label: String, active: Boolean, modifier: Modifier, onClic
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                 LedDot(4f, active)
-                Text(label, style = otext(8f, FontWeight.ExtraBold, if (active) C.TextMain else C.TextSub, lh = 9.7f), maxLines = 1, softWrap = false)
+                Text(label, style = otext(8f, FontWeight.ExtraBold, ink, lh = 9.7f), maxLines = 1, softWrap = false)
             }
         }
     }
@@ -194,7 +208,16 @@ internal fun VibratoPanel(rect: PanelRect, st: OrganState) = OrganPanel(
 
 /* ============================ ROTARY ============================ */
 @Composable
-internal fun RotaryPanel(rect: PanelRect, st: OrganState) = OrganPanel(rect, header = { PanelTitle("Rotary") }) {
+internal fun RotaryPanel(rect: PanelRect, st: OrganState) = OrganPanel(
+    rect,
+    header = {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            PanelTitle("Rotary")
+            Spacer(Modifier.weight(1f))
+            CabinetToggle(st.cabinetOn) { st.toggleCabinet() }
+        }
+    },
+) {
     Box(Modifier.fillMaxSize().padding(start = 6.dp, top = 16.dp, end = 6.dp, bottom = 4.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -222,14 +245,24 @@ internal fun RotaryPanel(rect: PanelRect, st: OrganState) = OrganPanel(rect, hea
                 OrganHFader(st.balance, { st.setFader(OrganFaderId.RotaryHornDrum, it) }, Modifier.weight(1f))
             }
         }
-        PressBox(Modifier.align(Alignment.TopEnd).offset(y = 2.dp, x = (-2).dp).height(12.dp), 0f, { st.toggleCabinet() }) {
-            Box(
-                Modifier.fillMaxHeight().cssBox(radius = 3f, fill = solid(C.Dark1), border = if (st.cabinetOn) Color(0x80EF4444) else white(0.1f)).padding(horizontal = 5.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                val s = otext(6f, FontWeight.ExtraBold, if (st.cabinetOn) C.Red else C.TextSub, ls = 0.4f, lh = 7.2f)
-                val t = if (st.cabinetOn) "ON" else "OFF"
-                if (st.cabinetOn) GlowText(t, s, listOf(Color(0x99EF4444) to 3f)) else Text(t, style = s, maxLines = 1, softWrap = false)
+    }
+}
+
+/** Cabine ON/OFF : dans l'en-tête, collé à l'extrême droite haute du panneau, états en fondu. */
+@Composable
+private fun CabinetToggle(on: Boolean, onClick: () -> Unit) {
+    val border by animateColorAsState(if (on) Color(0x80EF4444) else white(0.1f), tween(180), label = "cbb")
+    val ink by animateColorAsState(if (on) C.Red else C.TextSub, tween(180), label = "cbi")
+    val a by animateFloatAsState(if (on) 1f else 0f, tween(160), label = "cba")
+    PressBox(Modifier.height(12.dp), 0f, onClick) {
+        Box(
+            Modifier.fillMaxHeight().cssBox(radius = 3f, fill = solid(C.Dark1), border = border).padding(horizontal = 5.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val s = otext(6f, FontWeight.ExtraBold, ink, ls = 0.4f, lh = 7.2f)
+            Box(contentAlignment = Alignment.Center) {
+                Text("OFF", Modifier.graphicsLayer { alpha = 1f - a }, style = s, maxLines = 1, softWrap = false)
+                GlowText("ON", s, listOf(Color(0x99EF4444).copy(alpha = a) to 3f), Modifier.graphicsLayer { alpha = a })
             }
         }
     }
@@ -247,20 +280,29 @@ private fun KnobItem(label: String, v: Float, valueText: String, onChange: (Floa
 }
 
 @Composable
-private fun SpeedButton(fast: Boolean, onClick: () -> Unit) = PressBox(Modifier.size(74.dp, 22.dp), 1f, onClick) {
-    Box(
-        Modifier.fillMaxSize().cssBox(
-            radius = 4f,
-            fill = if (fast) vGrad(C.Dark2, C.Dark1) else vGrad(C.BtnTop, C.BtnBottom),
-            border = if (fast) white(0.1f) else white(0.15f),
-            shadows = if (fast) listOf(shadow(0f, 1f, 2f, black(0.5f)), inset(0f, 2f, 4f, black(0.7f)))
-            else listOf(shadow(0f, 2f, 3f, black(0.4f)), inset(0f, 1f, 0f, white(0.08f))),
-        ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            LedDot(5f, fast, C.LedGreen, Color(0xFF111111), 4f)
-            Text(if (fast) "FAST" else "SLOW", style = otext(8f, FontWeight.ExtraBold, if (fast) C.TextMain else C.TextSub, ls = 0.6f, lh = 9.7f), maxLines = 1, softWrap = false)
+private fun SpeedButton(fast: Boolean, onClick: () -> Unit) {
+    val top by animateColorAsState(if (fast) C.Dark2 else C.BtnTop, tween(180), label = "sbt")
+    val bot by animateColorAsState(if (fast) C.Dark1 else C.BtnBottom, tween(180), label = "sbb")
+    val ink by animateColorAsState(if (fast) C.TextMain else C.TextSub, tween(180), label = "sbi")
+    val a by animateFloatAsState(if (fast) 1f else 0f, tween(160), label = "sba")
+    PressBox(Modifier.size(74.dp, 22.dp), 1f, onClick) {
+        Box(
+            Modifier.fillMaxSize().cssBox(
+                radius = 4f,
+                fill = vGrad(top, bot),
+                border = if (fast) white(0.1f) else white(0.15f),
+                shadows = if (fast) listOf(shadow(0f, 1f, 2f, black(0.5f)), inset(0f, 2f, 4f, black(0.7f)))
+                else listOf(shadow(0f, 2f, 3f, black(0.4f)), inset(0f, 1f, 0f, white(0.08f))),
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                LedDot(5f, fast, C.LedGreen, Color(0xFF111111), 4f)
+                Box(contentAlignment = Alignment.Center) {
+                    Text("SLOW", Modifier.graphicsLayer { alpha = 1f - a }, style = otext(8f, FontWeight.ExtraBold, ink, ls = 0.6f, lh = 9.7f), maxLines = 1, softWrap = false)
+                    Text("FAST", Modifier.graphicsLayer { alpha = a }, style = otext(8f, FontWeight.ExtraBold, ink, ls = 0.6f, lh = 9.7f), maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
