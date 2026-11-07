@@ -227,11 +227,16 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
   boot, au changement de patch/setlist et a la suppression du patch actif
   (`MixerViewModel.restoreArpForActivePatch`), **sans ouvrir la fenetre FX**.
   Fermer la fenetre ne desarme PLUS l'arp (avant : `onDispose` -> `setArpArmed(false)`).
-- **Moteur = UN seul arp** (`mArpChannel`/`mArpEmitChannel`) : un canal a la fois.
-  La restauration arme la PREMIERE piste du patch qui porte un arp vivant
-  (`present && engaged`) et s'arrete. `present` (carte presente) se distingue de
-  `engaged` (carte allumee) : une carte coupee revient coupee, une carte retiree ne
-  revient pas.
+- **UN ARP PAR PISTE (correction utilisateur, commit 52de119)** : un arp s'ajoute A
+  LA DEMANDE sur **n'importe quelle** piste d'un patch, et **plusieurs** tournent
+  ensemble. Le slot MIDI est **vide par defaut** (`FxChain.midi = null` : rien n'est
+  precharge). Cote moteur, **un arp PAR CANAL MIDI** (`std::array<ArpEngine,
+  kMaxChannels> mArps` + masques atomiques `mArpArmedMask`/`mArpEmitMask`), plus
+  l'ancien `mArpChannel` unique. `restoreArpForActivePatch` arme **chaque** piste
+  (0..7) qui porte un arp vivant. Piege : l'emission survit au desarmement (sinon
+  les notes deja allumees sonnent sans fin) ; `runArp` **trie `arpOut_` par frame**
+  (deux canaux d'un meme bloc s'entrelacent sinon).
+  Ancien modele « premier-seul » : FAUX, ne pas y revenir.
 - **Persistance debouncee** : la grille pousse au moteur a chaque changement mais
   n'ecrit le rack qu'apres 600 ms (`FxDesignHost` : `saveArp()` dans `collectLatest`).
   `pushArp()` ecrit aussi `engine.arp` pour que la sauvegarde 500 ms du rack
