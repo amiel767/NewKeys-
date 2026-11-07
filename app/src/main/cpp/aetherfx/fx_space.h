@@ -127,7 +127,7 @@ class SpaceReverb : public Effect {
     // the travel was a single value (measured: 7 dead steps out of 50), because any
     // attack shorter than the shortest delay line is already "instant". 1 ms keeps the
     // control monotone right down to zero without lengthening a real attack.
-    const float atkA = 1.0f - std::exp(-1.0f / ((0.001f + 0.35f * att * att) * sr));
+    const float atkA = 1.0f - std::exp(-1.0f / ((0.001f + 0.30f * att * att) * sr));
     const float relA = 1.0f - std::exp(-1.0f / (0.25f * sr));
     const float preSamp = pre * 0.20f * sr;
     const float apg = 0.35f + 0.35f * lateG;

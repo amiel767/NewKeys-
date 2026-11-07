@@ -1,6 +1,8 @@
 package com.aetherkeys.fx
 
 import androidx.compose.animation.animateColorAsState
+import kotlin.math.ln
+import kotlin.math.pow
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -524,8 +526,17 @@ private val StarPath = Path().apply {
 }
 
 /** Normalisé 0..1 d'une valeur réelle du réglage. */
-private fun FxParamD.norm(v: Float): Float = ((v - min) / (max - min)).coerceIn(0f, 1f)
-private fun FxParamD.fromNorm(n: Float): Float = min + n.coerceIn(0f, 1f) * (max - min)
+// Les quatre frequences de Space sont normalisees en LOGARITHME (FxParamD.logRatio).
+// Ces deux conversions sont le seul chemin du bouton vers une valeur : elles doivent donc
+// suivre la meme loi que le moteur, sinon le remplissage du bouton et le glissement
+// mentiraient tous les deux — un bouton qui va a fond alors que le filtre est deja ouvert.
+private fun FxParamD.norm(v: Float): Float =
+    if (logRatio > 0f) (ln((v / min).coerceAtLeast(1e-6f)) / ln(logRatio)).coerceIn(0f, 1f)
+    else ((v - min) / (max - min)).coerceIn(0f, 1f)
+
+private fun FxParamD.fromNorm(n: Float): Float =
+    if (logRatio > 0f) min * logRatio.pow(n.coerceIn(0f, 1f))
+    else min + n.coerceIn(0f, 1f) * (max - min)
 
 /**
  * L'ANNEAU FIN — le potard de la référence.
