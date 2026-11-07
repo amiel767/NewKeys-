@@ -243,7 +243,7 @@ fun AeSpaceScreen(
         //    se partage ce qui reste, au prorata des colonnes de chaque panneau, et
         //    le potard suit la largeur obtenue.
         BoxWithConstraints(
-            Modifier.fillMaxWidth().padding(start = 292.dp, end = 16.dp).offset(y = 100.dp),
+            Modifier.fillMaxWidth().padding(start = 292.dp, end = 16.dp).offset(y = 88.dp),
         ) {
             val gap = 7.dp
             val cols = fx.groups.map { if (it.keys.size > 2) 2 else 1 }
@@ -263,9 +263,9 @@ fun AeSpaceScreen(
                                 drawRoundRect(col.copy(alpha = .10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx()))
                             }
                             .border(2.6.dp, col, RoundedCornerShape(24.dp))
-                            .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
+                            .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
                         Text(
                             g.title, color = SPACE_INK, fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
