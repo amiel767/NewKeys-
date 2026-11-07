@@ -486,3 +486,12 @@ Piano `9c93aa40` — ne pas y pousser.
   (`OrganControlsInputTest`, `OrganUiCaptureTest`, `AeInstrumentCaptureTest`,
   `AeManagerTest`) = 42/42 en ~13 s. Echecs preexistants hors sujet :
   `ExampleRobolectricTest`, `GreetingScreenshotTest`, `PianoPackFormatTest`.
+- **Flèche retour de la fenêtre vs panneau orgue** : deux systemes de coordonnees
+  independants. Flèche = `BackArrow(winTh, 10, 9, 30)` (scene 1000x460). Orgue =
+  unites maquette 891x411 mises a l'echelle par `LocalDensity`. Un `startInset`
+  qui decalait le bloc entier laissait une bande vide -> supprime ; seule la case
+  OCT est poussee (`D.X1 + 30f`, largeur `D.COL1 - 30f`). Commit `e37623f`.
+- **Pousser sur main** : `test/organ-design` etait en avance rapide sur
+  `origin/main` -> `git push origin HEAD:main` (pas de fusion). Verifier d'abord
+  `git merge-base --is-ancestor origin/main HEAD`.
+
