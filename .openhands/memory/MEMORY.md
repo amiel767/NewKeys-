@@ -3,6 +3,14 @@
 **Lire AGENTS.md d'abord** (pieges + decisions, charge auto). Ceci est l'index.
 Detail par session : `.openhands/memory/YYYY-MM-DD.md` (jamais charge auto).
 
+## Regle d'or : un outil de reconstruction se committe
+Le decodeur NCW a ete perdu DEUX fois (il vivait dans `/tmp`, et
+`tools/pianopack/build_newstage.py` l'importait de la). Tout script qui sert a
+reconstruire un livrable va dans `tools/`, jamais dans `/tmp`. Verifier ses
+imports : `grep -n "sys.path.insert" tools/**/*.py`.
+Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`).
+
+
 ## Mode economique (demande utilisateur, prioritaire)
 - Toute commande sort <= 10 lignes : `cmd > /tmp/x.log 2>&1; tail -3`. Jamais de
   `ls -la`/`grep`/`cat` non filtres, jamais de heredoc de script (il revient en
