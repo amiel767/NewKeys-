@@ -624,9 +624,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // La setlist active n'est pas posee ici : `restoreLastOpenedSetlist`
                 // la rouvre APRÈS le scan des setlists (elle a besoin de `scenes`).
                 // C'est volontaire — le scan lit le disque, et rouvrir avant lui
-                // n'aurait rien a ouvrir.
-                val hasActive = false
-                val restoredProjectName = ""
+                // n'aurait rien a ouvrir. On ne retient donc que le NOM a rouvrir.
                 pendingSetlistRestore = saved.activeProjectName?.takeIf { it.isNotEmpty() && it != "None" }
 
                 _uiState.update { state ->
@@ -731,8 +729,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
-                        activeSceneId = if (hasActive) restoredProjectName else "",
-                        activeProjectName = if (hasActive) restoredProjectName else "",
+                        activeSceneId = "",
+                        activeProjectName = "",
                         visibleTracksCount = restoredVisibleTracks,
                         soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
                         soundGoodizerMode = restoredMode,
