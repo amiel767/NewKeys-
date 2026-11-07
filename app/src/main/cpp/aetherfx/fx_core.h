@@ -13,7 +13,11 @@
 
 namespace aetherfx {
 
-constexpr int kMaxParams = 34;
+// Upper bound on the parameter count of any single effect. Every engine's own
+// paramCount() must stay at or below it: setNorm() rejects anything above, while
+// p() reads without a bound, so a declaration past the ceiling silently freezes the
+// control and reads out of the array. The organ is the widest engine today.
+constexpr int kMaxParams = 64;
 constexpr double kPi = 3.14159265358979323846;
 
 inline float clamp01(float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); }
