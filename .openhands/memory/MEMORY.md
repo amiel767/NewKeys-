@@ -409,6 +409,20 @@ Piano `9c93aa40` — ne pas y pousser.
   Mesure : `tools/design/{refscan,refmap,refpanels}.py`.
 - Branche `test/organ-design` (commit `2cdcf2d`) ; page de revue `/workspace/dl/pub/organ/`.
 
+## Session 2026-11-07 (New 3) — faders Rotary sur FaderRail + purge ancienne UI (`2d34763`)
+- **`FaderRailGeo`** (public, `FaderRail.kt`) = SEULE source de la geometrie de rainure
+  (`REF_W=86`, `GROOVE_W=17`, `GROOVE_INSET_Y=36`, `scale`, `grooveInsetY`, `grooveWidth`).
+  Tout capuchon se pose avec ces fonctions ; ne jamais recalculer 17/86 ou 36/86 a la main.
+- `OrganControls.kt` : `OrganVFader`/`OrganHFader` = rail du mixeur (H = rail couche a 90,
+  remplissage bipolaire depuis le milieu). Purge de l'ancienne UI orgue (morte depuis
+  `AeWindow.kt:132 -> AeOrganScreen`) : `AeOrganUi.kt`, `AeMetalKnob`, `AeDrawbar`,
+  `AeRocker`, `AeKeyboard`, `drawTonewheels`, `drawRotor`, `hash`/`drawWood`/`aeWood`,
+  `organ_fader_thumb_h/_v.xml`. **`drawKnobRelief` reste** (lu par `AeGlassKnob`).
+- **Roborazzi : `-Proborazzi.test.record=true`** (propriete Gradle). `-D...` ne reecrit
+  RIEN (tache SKIPPED, silencieux).
+- **Le token du remote `origin` est expire** -> `git push` bloque sur un mot de passe.
+  Pousser via `git -c credential.helper='!f(){ echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f' push origin HEAD:<branche>`.
+
 ## Session 2026-11-07 — UI orgue du zip integree (a4b5df3)
 - **Le zip de l'utilisateur = `app/assets/organ_ui_kotlin.zip`** (commit `56a741f`,
   amiel767, sur `origin/main`), PAS `fx_organ_source.zip`. 6 .kt + 14 drawables +
