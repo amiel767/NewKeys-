@@ -243,7 +243,7 @@ fun AeSpaceScreen(
         //    se partage ce qui reste, au prorata des colonnes de chaque panneau, et
         //    le potard suit la largeur obtenue.
         BoxWithConstraints(
-            Modifier.fillMaxWidth().padding(start = 362.dp, end = 16.dp).offset(y = 100.dp),
+            Modifier.fillMaxWidth().padding(start = 292.dp, end = 16.dp).offset(y = 100.dp),
         ) {
             val gap = 7.dp
             val cols = fx.groups.map { if (it.keys.size > 2) 2 else 1 }
@@ -255,8 +255,8 @@ fun AeSpaceScreen(
                     val col = pal[gi % pal.size]
                     val c = cols[gi]
                     val panelW = unit * c
-                    val knob = min(44f, ((panelW - 10.dp) / c).value).coerceAtLeast(24f)
-                    val f = (knob / 44f).coerceIn(.72f, 1f)
+                    val knob = min(56f, ((panelW - 10.dp) / c).value).coerceAtLeast(24f)
+                    val f = (knob / 56f).coerceIn(.72f, 1f)
                     Column(
                         Modifier.width(panelW)
                             .drawBehind {
@@ -278,7 +278,7 @@ fun AeSpaceScreen(
                                     Box(Modifier.weight(1f)) {
                                         SpaceRingKnob(
                                             label = spec.name, spec = spec, value = v(k), color = col,
-                                            size = knob.dp, labelSp = 11.5f * f, valueSp = 11.5f * f,
+                                            size = knob.dp, labelSp = 13.5f * f, valueSp = 13.5f * f,
                                             onChange = { set(k, it) }, onReset = { set(k, spec.def) },
                                         )
                                     }
