@@ -69,6 +69,19 @@ reverb. En log, cette même bande occupe **40 %** de la course.
 La conversion vit à **un seul endroit**, `SpaceReverb::freqHz()`, et l'affichage
 la suit (`FxParamD.logRatio`) : ils ne peuvent pas diverger.
 
+### Le balayage doit être dérivé de la plage du paramètre
+
+La courbe `FreqLog` était définie par une formule **fixe**, `20 × 1000^n`, qui ne
+regardait ni `min` ni `max`. Elle ne tombait juste que par hasard sur un réglage
+20 Hz..20 kHz. Conséquence mesurée : `BassFreq` (plage 100..1000 Hz) annonçait
+**6860 Hz** en haut de course, et l'effet EQ était faux sur ses trois fréquences.
+
+La loi est maintenant **le balayage log de la plage déclarée** :
+`réel = min × (max/min)^n`. Elle donne la bonne valeur quel que soit le couple
+min/max, et `SpaceReverb::freqHz()` (qui écrivait déjà `1000 × 16^n`) en est
+exactement le cas particulier de Space. Toute nouvelle courbe de fréquence doit
+passer par cette loi : `min > 0` est la seule condition.
+
 ## Ce que les mesures disent, et les pièges
 
 **Decay est un RT60 de bande basse.** L'amortissement est *dans* la boucle : l'aigu

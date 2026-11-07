@@ -22,9 +22,14 @@ struct EffectInfo { const char* name; const char* type; std::vector<ParamDesc> p
 
 constexpr float kRatios[6] = {1.5f, 2.f, 3.f, 4.f, 8.f, 20.f};
 
+// The frequency curves are a LOG SWEEP OF THE PARAMETER'S OWN RANGE: the law is
+// real = min * (max/min)^norm. It used to be the fixed `20 * 1000^norm`, which
+// ignores min/max entirely: a 100..1000 Hz control reported 6860 Hz at the top of
+// its travel. Every FreqLog parameter must satisfy min > 0, which the registry
+// guarantees (they are all frequencies).
 inline float toReal(const ParamDesc& d, float norm) {
   switch (d.curve) {
-    case Curve::FreqLog: return 20.f * std::pow(1000.f, norm);
+    case Curve::FreqLog: return d.min * std::pow(d.max / d.min, norm);
     case Curve::RatioStep: return kRatios[static_cast<int>(std::lround(norm * 5.f))];
     default: return d.min + (d.max - d.min) * norm;
   }

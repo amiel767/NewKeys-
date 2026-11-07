@@ -521,8 +521,11 @@ FxInfo(1, "Aether Echo", "Delay", FxKind.EFFECT,
 
     // id == -1 is the "no Aether instrument" sentinel and must never index all[-1].
     fun info(id: Int): FxInfo = all.getOrElse(id) { all[0] }
+    // La courbe FREQ_LOG est un balayage log de la PLAGE du parametre :
+    // reel = min * (max/min)^n. La formule fixe `20 * 1000^n` ignorait min/max :
+    // un reglage 100..1000 Hz annoncait 6860 Hz en haut de course.
     fun toReal(p: FxParam, norm: Float): Float = when (p.curve) {
-        FxCurve.FREQ_LOG -> 20f * Math.pow(1000.0, norm.toDouble()).toFloat()
+        FxCurve.FREQ_LOG -> p.min * Math.pow((p.max / p.min).toDouble(), norm.toDouble()).toFloat()
         FxCurve.RATIO_STEP -> floatArrayOf(1.5f, 2f, 3f, 4f, 8f, 20f)[Math.round(norm * 5f)]
         FxCurve.LINEAR -> p.min + (p.max - p.min) * norm
     }
