@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- organ_toggle_track — généré (AetherKeys / Organ). Ne pas éditer à la main : voir gen/*.js -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="52dp"
+    android:height="26dp"
+    android:viewportWidth="52"
+    android:viewportHeight="26">
+<path android:pathData="M8,5 H44 A4,4 0 0 1 48,9 V19 A4,4 0 0 1 44,23 H8 A4,4 0 0 1 4,19 V9 A4,4 0 0 1 8,5 Z" android:fillColor="#FFFFFF" android:fillAlpha="0.1"/>
+<path android:pathData="M8,4 H44 A4,4 0 0 1 48,8 V18 A4,4 0 0 1 44,22 H8 A4,4 0 0 1 4,18 V8 A4,4 0 0 1 8,4 Z" android:fillColor="#050505"/>
+<group>
+<clip-path android:pathData="M8,4 H44 A4,4 0 0 1 48,8 V18 A4,4 0 0 1 44,22 H8 A4,4 0 0 1 4,18 V8 A4,4 0 0 1 8,4 Z"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,9.29 H44 A0.71,0.71 0 0 1 44.71,10 V20 A0.71,0.71 0 0 1 44,20.71 H8 A0.71,0.71 0 0 1 7.29,20 V10 A0.71,0.71 0 0 1 8,9.29 Z" android:fillColor="#000000" android:fillAlpha="0.09" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,8.073 H44 A1.927,1.927 0 0 1 45.927,10 V20 A1.927,1.927 0 0 1 44,21.927 H8 A1.927,1.927 0 0 1 6.073,20 V10 A1.927,1.927 0 0 1 8,8.073 Z" android:fillColor="#000000" android:fillAlpha="0.099" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,7.349 H44 A2.651,2.651 0 0 1 46.651,10 V20 A2.651,2.651 0 0 1 44,22.651 H8 A2.651,2.651 0 0 1 5.349,20 V10 A2.651,2.651 0 0 1 8,7.349 Z" android:fillColor="#000000" android:fillAlpha="0.11" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,6.771 H44 A3.229,3.229 0 0 1 47.229,10 V20 A3.229,3.229 0 0 1 44,23.229 H8 A3.229,3.229 0 0 1 4.771,20 V10 A3.229,3.229 0 0 1 8,6.771 Z" android:fillColor="#000000" android:fillAlpha="0.123" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,6.251 H44 A3.749,3.749 0 0 1 47.749,10 V20 A3.749,3.749 0 0 1 44,23.749 H8 A3.749,3.749 0 0 1 4.251,20 V10 A3.749,3.749 0 0 1 8,6.251 Z" android:fillColor="#000000" android:fillAlpha="0.141" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,5.749 H44 A4.251,4.251 0 0 1 48.251,10 V20 A4.251,4.251 0 0 1 44,24.251 H8 A4.251,4.251 0 0 1 3.749,20 V10 A4.251,4.251 0 0 1 8,5.749 Z" android:fillColor="#000000" android:fillAlpha="0.164" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,5.229 H44 A4.771,4.771 0 0 1 48.771,10 V20 A4.771,4.771 0 0 1 44,24.771 H8 A4.771,4.771 0 0 1 3.229,20 V10 A4.771,4.771 0 0 1 8,5.229 Z" android:fillColor="#000000" android:fillAlpha="0.196" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,4.651 H44 A5.349,5.349 0 0 1 49.349,10 V20 A5.349,5.349 0 0 1 44,25.349 H8 A5.349,5.349 0 0 1 2.651,20 V10 A5.349,5.349 0 0 1 8,4.651 Z" android:fillColor="#000000" android:fillAlpha="0.243" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,3.927 H44 A6.073,6.073 0 0 1 50.073,10 V20 A6.073,6.073 0 0 1 44,26.073 H8 A6.073,6.073 0 0 1 1.927,20 V10 A6.073,6.073 0 0 1 8,3.927 Z" android:fillColor="#000000" android:fillAlpha="0.321" android:fillType="evenOdd"/>
+<path android:pathData="M-50,-50 H102 V102 H-50 Z M8,2.71 H44 A7.29,7.29 0 0 1 51.29,10 V20 A7.29,7.29 0 0 1 44,27.29 H8 A7.29,7.29 0 0 1 0.71,20 V10 A7.29,7.29 0 0 1 8,2.71 Z" android:fillColor="#000000" android:fillAlpha="0.474" android:fillType="evenOdd"/>
+</group>
+</vector>
