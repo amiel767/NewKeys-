@@ -18,11 +18,22 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
   Une conversation qui gonfle coute a CHAQUE tour suivant.
 
 ## Pieges couteux
+- **Maven Central renvoie 429 depuis la sandbox** (curl direct aussi). Robolectric
+  bloque alors TOUTE la suite de tests (2 artefacts : `nativeruntime-dist-compat` au
+  classpath, `android-all-instrumented:<v>` telecharge au runtime dans `~/.m2`).
+  Fix sans toucher le depot : `./gradlew -I /workspace/init-mirror.gradle ...` avec
+  `maven.aliyun.com/repository/public` **en premier** + prefetch du jar android-all
+  (+ son `.pom`) dans `~/.m2/repository/org/robolectric/android-all-instrumented/`.
+- **`--configuration-cache` casse `:app:testDebugUnitTest`** (serialization error
+  `DefaultArtifactCollection`) : ajouter `--no-configuration-cache` pour les tests.
+- `restore_env.sh` (depot) ne pose que JAVA_HOME + keystore : il **n'installe pas** le
+  SDK ni `local.properties`. Recreer `/workspace/install_sdk.sh` (cmdline-tools +
+  platforms;android-36 + build-tools;36.0.0 + cmake;3.22.1 + ndk;26.1.10909125) et
+  `/workspace/build.sh`. JDK : `/usr/lib/jvm/java-21-openjdk-amd64`.
 - « Compile + pousse » ne prouve PAS qu'une UI a bouge : verifier le fichier qui
-  rend la fenetre + capture Roborazzi. (2026-11-03 : 3 commits moteur, meme UI.)
-- **Roborazzi n'ecrit un PNG qu'avec `recordRoborazziDebug --tests ...`**, et il
-  faut `--rerun` sinon UP-TO-DATE. `testDebugUnitTest` seul ne reecrit rien.
-- `AeChip(c,idx,i,n)` = i/(n-1) ; le moteur sax mappe `lround(p(0)*3)` sur 4 types :
+  rend la fenetre, + capture Roborazzi/OCR. (2026-11-03 : 3 commits moteur, user
+  voyait la meme interface.)
+- `AeChip(c,idx,i,n)` = i/(n-1). Le moteur sax mappe `lround(p(0)*3)` sur 4 types :
   retirer un chip impose de GARDER n=4.
 - Sandbox vierge a chaque session : reinstaller JDK 21 (trixie n'a pas de 17),
   SDK a /workspace/android-sdk sans JDK. Roborazzi n'ecrit un PNG qu'avec
@@ -34,41 +45,26 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
   jamais de dump de script par heredoc (il revient en entier), jamais de listing
   complet. Mesures ecrites sur disque, lues par agregat. Une conversation qui
   gonfle coute a CHAQUE tour suivant.
-- **Courbe `FreqLog` = balayage log de la plage du parametre**, `reel = min*(max/min)^n`,
-  jamais une constante. La formule fixe `20*1000^n` ignorait min/max et annoncait
-  6860 Hz pour un reglage declare 100..1000 Hz (BassFreq, + les 3 freq d'EQ). Deux
-  copies a garder d'accord : C++ `aetherfx/fx_registry.h` et Kotlin
-  `mixer/fx/FxRegistry.toReal`. Banc d'invariant : `tools/design/regcheck.cpp`.
-- `grep -r` depuis `app/` ramasse `app/build/kspCaches/*` : une seule ligne de
-  plusieurs centaines de Ko. Toujours `--include=*.kt`/`*.h` ou exclure `app/build/`.
-- **Un banc doit echouer sur une faute connue** avant d'etre cru : `regcheck` remis
-  sur l'ancienne formule sort 90 echecs. Un banc qui passe toujours ne prouve rien.
-- Sandbox vierge a chaque session : JDK 21 a installer (trixie n'a pas de 17) ;
-  SDK dans `/workspace/android-sdk` (sans JDK). `restore_env.sh` est CASSE.
-- 401 « token_not_found_in_db » = proxy LiteLLM, pas le depot : sortir net.
 - Ne JAMAIS declencher de workflow GitHub (release.yml = workflow_dispatch only).
-- Un commit non pousse = perdu (wipe du sandbox).
-- **Pack multi-couches : normaliser PAR COUCHE**, jamais globalement (sinon courbe de
-  velocite plate/NON monotone). Fondu entre prises de la MEME source : LINEAIRE, pas
-  cos/sin.
-- **Pack heterogene** : une couche = une RACINE distincte. Forcer une note a lire
-  toutes ses couches sur une racine la remplace par la plus faible (-18 dB, timbre
-  detruit). Un banc a fenetre courte (250 ms) invente un « battement » inexistant.
-- **Un filtre = un objet.** Trois appels `setLowShelf`/`setPeaking`/`setHighShelf`
-  sur le MEME `Biquad` : seul le dernier survit. Mesurer un EQ sur du bruit blanc a
-  bas niveau, jamais sur un accord.
-- **Un clic qui suit chaque note n'est pas forcement un clic ajoute** : mesurer le
-  transitoire d'attaque avant de retirer quoi que ce soit.
-- Generateur de demo : rendre jusqu'au PROCHAIN evenement, pas par blocs fixes
-  (sinon les attaques derivent). Verifier une ligne par controle spectral (FFT 16384,
-  fenetre 150 ms) avant de publier.
+- **Pack multi-couches : normaliser PAR COUCHE, jamais globalement.** Une cible RMS
+  unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
+  NON monotone (frapper plus fort donne moins). Et pour un fondu entre deux prises de
+  la MEME source (correlees) : fondu LINEAIRE, pas cos/sin (puissance constante).
+- **Pack heterogene : NE PAS forcer une note a lire toutes ses couches sur une seule
+  racine.** Mesure du 2026-11-04 (3e) : la racine 60 ne porte qu'UNE couche (la
+  DOUCE) ; les couches fortes vivent sur la racine 59. Forcer la racine 60 a la note
+  60 remplace la couche forte (rms 0,040) par la douce (0,001) -> **-18 dB** et
+  timbre detruit. Une couche = une racine distincte dans ces packs. Le « dain dain »
+  suppose du 04 n'a PAS ete confirme : l'enveloppe du moteur d'origine (fenetre 50 ms
+  / hop 10 ms, detrend) est une decroissance MONOTONE lisse, sans ondulation.
+  Attention : un banc a fenetre de tendance courte (250 ms) invente un « battement »
+  qui n'existe pas — le valider sur un signal temoin (prise seule) avant de conclure.
 
-## Environnement (verifie 2026-11-04)
-- **Le depot vit a la RACINE `/workspace/project`.** SDK : `/workspace/android-sdk`
-  (`ANDROID_HOME` non defini), JDK `/workspace/jdk/jdk-21.0.13+9`, Gradle 9.3.1.
-  Build natif complet ~1m15. `app/app/` est un artefact de build parasite.
-- `serve.py` doit demarrer APRES `apk_page.py` (sinon 404 sur /aether.apk). Livraison
-  port 12000, `/workspace/dl/pub` -> https://work-1-.../demos/
+## Session 2026-11-04 — T2/T5 velocite piano
+- Cause unique mesuree : normalisation GLOBALE des couches (dynamique 13,6 -> 29,7 dB
+  apres correction) + pas de dB inegaux du pack (saut T5) + fondu cos/sin sur signaux
+  correles. Correctifs dans `fx_piano.h` (`preload`, `PianoVoice::process`). Commit
+  `94d393e` pousse. Detail : `.openhands/memory/2026-11-04.md`.
 
 ## Session 2026-11-04 (New 2) — persistance de l'instrument Æther
 - **`TrackChannel.aether` n'existait pas** (le champ n'etait que sur `TrackSnapshot`).
@@ -87,100 +83,71 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
 - Verifier `git log` AVANT d'implementer un brief : REQ1/REQ2 etaient deja pousses.
   Detail : `.openhands/memory/2026-11-04.md`.
 
-## Sheets : Sets et fenetre flottante (2026-11-04)
-- **Un Set est un DOSSIER** : `Setlist(id, name, sheetIds, colorArgb, createdAt,
-  updatedAt)` dans `.library.json`. Le supprimer ne supprime AUCUNE feuille.
-  Le filtrage vit dans `LibraryUiState.visibleSetlists()` / `visibleSheets()`
-  (`LibraryFilter.{All,Favorites,Sets,OfSetlist}`).
-- **`LibraryCard`** (`ui/home/HomeScreen.kt`) est le gabarit commun des cartes de
-  bibliotheque (fond, sheen XML, tranche, ombre, rebond) ; `SheetCard` et
-  `SetCard` n'apportent que le contenu. La preview des accords se cale sur la
-  largeur reelle de la carte (`previewWidthFor`).
-- **Flottant** : pastille fine en bas = hauteur + mode « remplir » (les sections
-  suivantes s'affichent tant qu'elles entrent) ; pastille fine a gauche =
-  largeur, et `fontScale = cardW / FloatingWidth` fait grandir les polices.
-  Bornes `FloatingMinWidth` 260 dp / `FloatingMaxWidth` 620 dp.
-- **Piege de test** : le nom d'un Set est sur la carte ET sur la pastille de
-  filtre -> 2 noeuds. Taguer la carte (`set-card`). Et `OverlineLabel` passe en
-  MAJUSCULES : chercher `SETS`, pas `Sets`.
-- **Piege mesure** : la carte de Set prenait `sheetIds` (UUID) comme texte au lieu
-  de resoudre les titres. Toujours resoudre un id vers son titre a l'affichage.
-- **Reglages Sheets = un PANNEAU, pas un ecran** (commit `e2688d4`, 2026-11-04).
-  `SheetsSettingsScreen` faisait `SheetsPageBackground{fillMaxSize}` et recouvrait la
-  bibliotheque. Copie de Setlists (`SlSettingsPanel`) : `Box(align TopEnd)
-  .padding(top=60,end=18)` + voile `detectTapGestures` qui ferme, croix 28 dp,
-  materiau `.sheetsPanel()` (ombre 14 + degrade PanelTop->PanelBottom + liseré 0,10),
-  apparition `.sheetsAppear()` (fondu + montee 8 dp + scale 0,96->1, 220 ms).
-  Mesure : **538 x 334 dp** (Setlists ~540 x 314). Reparti en **2 colonnes de 4
-  groupes** pour tenir sans scroll (un `verticalScroll` en 2 colonnes ne reduit rien).
-  `SheetsColors.PanelTop/Accent/Well` == `SlColors.*` : aucune conversion de couleur.
-  **Regle** : un reglage de page est une pop-up ; copier la forme du voisin qui fait
-  deja la meme chose, ne pas en inventer une.
-- **Verre des cartes (commit `fe3c5d9`)** : le fond prend la couleur PROPRE de la
-  feuille (alpha 0,60 en degrade) au lieu de `lerp(SurfaceRaised, base, 0.30)` ; chroma
-  mesure 28,8 -> 68,5 (lignes) et 24,8 -> 34,8 (cartes). L'`ombre` des cartes et des
-  lignes est RETIREE (le modele `LibraryCard` ci-dessus la decrivait : c'est fini).
-  Liste du bas : 43,5 dp par ligne, apercu d'accords 19 sp.
-- **Piege de test** : `SheetsCaptureTest` ecrit les feuilles dans un dossier
-  temporaire et la liste suit l'ordre du dossier, qui varie d'une execution a
-  l'autre : les couleurs de lignes (teal/rose) **s'inversent** dans
-  `sheets_home/sets/inside_a_set.png` (17-27 % de pixels). Pas une regression.
-- **Piege de compilation** : `SwitchRow(label, checked, onChange = {...})` —
-  `onChange` est un parametre NOMME, pas un lambda final.
-
 ## Carte du code Æther
 - Fenetres : `AeWindow.kt` dispatch -> `AePianoUi.kt` / `AeSaxUi.kt` / ...
 - Banques : `AeBanks` (`AeInstrumentHost.kt`) : `isElectricModel`, `pianoBankId`.
-- Moteurs : `app/src/main/cpp/aetherfx/fx_piano.h` (20 params), `fx_sax.h` (23).
-- Thread audio : `AudioEngine::onAudioReady` (`audio_engine.cpp`). Contrat : verrou
-  `try_to_lock`, zero allocation, zero `LOGI`. `renderDirect()` n'est PAS le callback.
-- Presets : `gen_presets.py` doit lire les 20 valeurs piano. `mastering.cpp ... retune`
-  cale LEVEL (cible K-weighted mediane). Demos : `tools/demos/audio/` (MP3, moteur reel).
+- Moteurs : `app/src/main/cpp/aetherfx/fx_piano.h` (17 params), `fx_sax.h` (23).
 
-## Fait et a ne pas re-corriger
-- **Boucle piano SAINE** (enveloppe de tenue identique boucle active/coupee). Le faux
-  sustain venait des regions qui bouclaient dans la partie DECROISSANTE : `flattenLoop()`
-  aplatit la boucle et fond le raccord vers la phase AVANT `loopStart`. Fondu de raccord
-  porte a 200 ms (« dain dain »). Ondulation residuelle = battement modal de la REVERB,
-  intrinseque.
-- **« Marteau » sax = transitoire d'ATTaque** (clic de synthese fx_sax.h l.229, bande
-  2800 Hz + attaque de l'echantillon). Le `bite` ne pese que 2,6 %. Correctif : attaque
-  adoucie (synth 50 ms + fondu echantillon 150 ms).
-- **Velocite piano/EP SAINE** : courbe lisse sur 1..127 (~41 dB), aucune inversion.
-  Le fondu a puissance constante entre couches (fx_piano.h ~l.1084) corrige le haut.
-- **Bulldog Sax** integre (commit 700879f, accord du proprietaire) : l'alto (type 1)
-  joue `saxpack_bulldog.bin`, repli `saxpack_alt.bin`. Param 22 « Character » = 1,0 sur
-  les 23 presets -> controles de synthese annules. `p(1)` « Subtone » = parametre mort.
-- **Bulldog = UN sax, profil ALTO** (centroide 2600-3400 Hz). « enleve le sax de meme
-  nature » = l'alto change de source, PAS retirer les autres.
+## Session 2026-11-03 (3e) — nettoyage ressources mortes (ea4d6f5)
+- 40 ressources mortes retirees (ic_fx_* = vecteurs AeFxIcons en code, fonts
+  inter/lexend/orbitron) + reliques racine (0.4500, B4/B5*.txt, copies racine
+  de Setlists/Settings, .aistudio). Outil : `tools/audit_dead_res.py`.
+- NE PAS toucher `ae_piano_*`/`ae_sax_*` : charges par `getIdentifier` (invisible
+  a un grep de nom). `app/assets/` (JSX) conserve : reference de design.
+
+## Session 2026-11-03 (suite) — Sax + planches
+- **Bulldog = UN sax, profil ALTO** (centroide 2600-3400 Hz ; plage EXP1
+  MIDI 50.9-86.3). « enleve le sax de meme nature » = l'alto change de source,
+  PAS retirer les autres. Les 4 chips (n=4) restent ; Bari restaure.
+- **Bulldog source perdue** : les liens `dl*.filesdwn.ir` sont 404, et le commit
+  local `a67ad1d` (banque unique `saxpack.bin` 5,37 Mo, articulations) n'a JAMAIS
+  ete pousse -> perdu au wipe. Un commit non pousse = perdu.
 - Case de presets Sax masquee dans `AeWindow.kt` (`!= PIANO && != SAX`).
-- **Saccades audio (cc7a152)** : 3 violations temps reel — `resetMasterBus()` tenait
-  `mRenderMutex` (drapeau atomique desormais), `resize()` dans le callback (scratchs
-  pre-dimensionnes dans `openAndStartStream()`), `LOGI()` du temps de rendu (publie
-  dans `mLastRenderUs`, journalise par le thread de controle).
-- **Gain de rendu piano (cc7a152)** : acoustiques x1,70 / tine x1,15 dans `fx_piano.h`
-  (gain de SORTIE, pas les LEVEL). Pic max 92,8 % sur accord 6 notes v=127, zero ecrete.
-- **EQ piano (cc7a152)** : 3 gains dans la colonne de droite (x=735/830/919, y=349,
-  taille 0,95), frequence du medium seule au milieu (x=450/524/598). Sans titre.
-  Familles espacees de 84 (3 familles).
-- **Fenetres Æther** : `SoundfontWindow` (inchangee) + `AetherInstrumentsWindow`
-  (`instruments/AeInstrumentsWindow.kt`, popup AETHER). `SoundSourceChooserPopup`
-  (popup SOUND_SOURCE) ouvert au clic sur le nom de piste. `addSoundTrack()` ne doit
-  RIEN ouvrir (appele en boucle par le bridge LiveUI) ; le « + » passe par
-  `addSoundTrackAndChooseSource()`.
+- **Planches piano/EP** : `tools/pianopack/build_plates.py` convertit les 12 PNG
+  du zip (1376x768) en WebP 1500 px -> 770 Ko (contre 1254 Ko). Les 3 EP
+  (ballad/dx/epiano) ont desormais leur photo (avant : repli sur `electric`).
 
-## Session 2026-11-05 — FX : 3 slots audio, arp persistant, fenetre reduite (5b9b5d3)
-- **Rack = 3 emplacements AUDIO** ; la 4e carte est l'ARPEGIATEUR (MIDI), pas un
-  emplacement. Master = 4 audio sans MIDI. `TrackStrip{3,false}` / `master_{4,true}`.
-- **L'arp (presence + armement) vit dans le rack** : toute action du rack doit
-  l'ecrire, sinon suppression/bypass ne se persistent pas. Restaurer doit
-  repousser la GRILLE, pas seulement rearmer le canal.
-- **Roborazzi n'ecrit RIEN sans `-Proborazzi.test.record=true`** : mesurer un PNG
-  perime fait croire que le code ne marche pas. Verifier le mtime.
-- **Mesurer une fenetre = mesurer le PANNEAU**, pas le voile (seuil luminance).
-- **3 echecs de suite PREEXISTANTS** : ExampleRobolectricTest (app_name =
-  "Æther Keys", test attend "SoundStage"), GreetingScreenshotTest,
-  PianoPackFormatTest (pack 160 regions, test attend 68). Hors perimetre FX.
+## Session 2026-11-04 — faux sustain piano + « marteau » sax
+- **Faux sustain piano (N1)** : 38/68 regions du pack bouclaient dans la partie
+  qui DECROIT ; le lecteur rebouclait sans fondu ni gain. `build_newstage.py`
+  annonce compenser mais ne le fait jamais (`faded=0`). Correction A LA LECTURE :
+  `flattenLoop()` (`fx_piano.h`, appele par `decodeRegion`) aplatit le niveau de
+  la boucle + fond le raccord sur une periode vers la phase AVANT `loopStart`
+  (jamais vers la tete du loop). Chute 0,78->0,96, saut 0,77->0,06.
+- **« Marteau » sax (N5) — CORRIGE le 2026-11-03** : ce n'est NI la boucle (saine,
+  chute 0,99) NI le `bite`. Mesure : le `bite` ne pese que **2,6 %** du signal, et le
+  desactiver laisse le MEME nombre de pics. Les « ts ts ts » tombent EXACTEMENT sur les
+  attaques de notes (verifie en correlant les clics avec les noteOns du lick). C'est le
+  transitoire d'attaque (crete/RMS 0,37) = clic de synthese delibere (fx_sax.h l.229,
+  bande 2800 Hz, 18 ms) + attaque naturelle de l'echantillon. Correctif candidat :
+  attaque adoucie (synth 50 ms + fondu echantillon 150 ms + clics coupes) -> 0,25.
+  **Regle** : un clic qui suit chaque note n'est pas forcement un clic ajoute ; mesurer
+  le transitoire d'attaque avant de retirer quoi que ce soit.
+- **p(1) « Subtone » n'est lu nulle part** dans `fx_sax.h` (parametre mort).
+- **Parametre 22 = knob « Character »** (0 = synthese, 1 = echantillon). Les 23
+  presets sax sont a **1,0** -> tous les controles de synthese (Breath, Growl,
+  Scoop, Grit, Attack) sont annules. C'est « les articulations pas branchees ».
+- **Bulldog Sax V2** : l'utilisateur a declare le 2026-11-04 detenir la LICENCE
+  et l'ACCORD du proprietaire. **Tous les fichiers qu'il enverra desormais sont
+  livres avec accord** -> ne plus bloquer sur la licence ; reintegrer Bulldog.
+  **INTEGRE le 2026-11-03** (commit `700879f`) : `tools/saxpack/build_bulldog.py`
+  construit `saxpack_bulldog.bin` depuis les 36 `NN-EXP1.wav` (02 = MIDI 54, +1
+  demi-ton/fichier, mesure par hauteur). `AeBanks.fileFor` : l'**alto** (type 1)
+  joue Bulldog, repli `saxpack_alt.bin` dans `read()`. Boucle = entier de periodes
+  (seam 0,98 -> 0,21), tenue plate sur 6 s.
+- **Velocite piano/EP (T2/T5) : OK, pas de saut.** `piano_velocity_check` +
+  balayage fin : courbe LISSE sur 1..127 (~41 dB), aucune inversion reelle. Le
+  fondu a puissance constante entre couches (fx_piano.h ~l.1084) corrige le « ca
+  saute » en haut de la velocite. Le faux « saut de 5 dB » venait d'un `printf("%d",
+  double)` dans mon banc, pas du moteur.
+- **T1 (Amp) : deja fait** — AMP (12) et PUNCH (13) retires de `AePianoUi.kt` ;
+  index 12 recycle en bruit de touche. **T4 : fait** — groupes TONE/MIC/PLAY/
+  MECHANICS (acoustique) et TONE/SPACE/PLAY/MECHANICS (EP).
+- **Demos audio** : `tools/demos/audio/` (12 pianos + 4 sax, MP3) rendus par le
+  moteur reel ; regen via `tools/demos/f32_to_mp3.py`. Sert de reference d'ecoute.
+- **401 token_not_found_in_db** : rafraichissement par la plateforme via
+  `OH_LLM_API_KEY_REFRESH_URL` / base `https://llm-proxy.app.all-hands.dev` /
+  en-tete `X-Session-API-Key`. Probleme plateforme, pas depot ; sortir net.
 
 ## Session 2026-11-04 (suite) — fenêtre Æther Instruments + pop up de choix
 - **Deux fenêtres séparées** : `SoundfontWindow` (inchangée) et
@@ -212,6 +179,67 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
   (le sax renvoie « Sax », il n'a pas d'UI de preset), lu par `ChannelStripV2.kt:95`.
 - Récupération après wipe : le dump `tools/.eco/stream_<cid>.json` + rejeu des
   éditions `file_editor` reconstruit un worktree perdu (voir daily log).
+
+## FX Design (fenêtre FX) — 2026-11-06
+
+- **L'EQ est « Æther Prism »** (`FxId`/`FxDesign` id **2**, `FX_TONE` cote moteur),
+  pas « Sculpt ». Palette **Rouge Royal** par defaut, bleu en variante.
+- **Page Kotlin** : `com/aetherkeys/fx/FxEqPage.kt` (courbe a gauche + 3 colonnes
+  Low/Mid/High a droite, pied Mode Shelf/Bell/Tilt + Output). Les donnees et
+  l'arithmetique sont dans `FxDesign.kt` (`FxDesign.PRISM`, `object FxEq`).
+  Montee dans `FxEffectPage.kt` (`if (fx.eq)`) et l'en-tete presets dans `FxWindow.kt`.
+  `FxDesignHost.kt` traite Prism **comme** Space (vrai effet de chaine : `engineSlot`).
+- **Disposition retenue** : trois colonnes cote a cote (chacune gros potard de gain
+  + petit Freq, le Mid a en plus son Q). Ne **pas** revenir au selecteur de bande
+  unique (`.band-seg`) : l'utilisateur ne l'a pas aime.
+- **12 presets pro** (Flat, Low Cut, Warmth, Air, Presence, De-Mud, Vocal,
+  Acoustic, Piano, Kick, Snare, Telephone) recales dans les **3** registres
+  (2 Kotlin + `fx_registry.h`). `FxEqLogicTest` verifie l'egalite design<->moteur.
+- **Pieges verifies** :
+  - `Modifier.weight` est une extension de `RowScope` : hors scope dans un
+    `@Composable` prive, l'erreur ne dit que « Unresolved reference 'weight' ».
+    Passer le `Modifier` en parametre.
+  - `FxDesign` initialise des couleurs via `android.graphics.Color.parseColor` :
+    un test **JUnit nu** echoue (`Method parseColor not mocked`). Tester sous
+    **Robolectric** (`@RunWith(RobolectricTestRunner::class)`).
+  - `tools/design/preview.py serve <dir>` : router sur le dossier publie lui-meme,
+    pas son parent — sinon `/eq.html` repond 404 et l'on capture une page blanche.
+  - **Regenerer un artefact publie** : comparer d'abord le generateur local a
+    `origin/main` (`git diff origin/main --stat -- tools/xxx_page.py`). Un worktree
+    en retard republie l'ancien monde (cas vecu sur `sheets_page.py`).
+- **Livraison** : `tools/eq_page.py` publie maquette vivante + comparaisons
+  maquette|Kotlin (WebP) sous `/workspace/dl/pub/eqdesign/`, et ecrit aussi
+  `/workspace/dl/pub/index.html` pour que le lien racine mene a l'EQ.
+
+## Arpeggiateur — peaufinage (2026-11-07, branche `design/tests`)
+
+- **Le bug « random joue DownUp »** : `MODE` etait envoye `mode / 5f` sur une table
+  d'affichage qui ne suit PAS l'ordre du moteur (`ArpMode` = Up, Down, UpDown,
+  DownUp, Random, Chord). « random » (index de page 3) tombait sur DownUp (index 3).
+  Idem `RATE` : `sub / 3f` sur 4 subdivisions alors que le moteur en a 6, donc
+  « 1/8 » jouait 1/16 et « 1/32 » saturait. Corrige par `object ArpMapping`
+  (`aetherkeys/fx/ArpMapping.kt`) : **un seul endroit** fait page <-> moteur.
+- **`FxDesign.SUBS` suit maintenant l'ordre de `ArpRate`** (6 entrees, ajout de
+  `1/8T`, `1/16T`) : l'index EST le taux. `STYLES` reste dans l'ordre de la PAGE
+  (random en 4e), la correspondance vit dans `ArpMapping.MODES = [0,1,2,4]`.
+- **L'arp est PERSISTANT** : `ArpEngine` (`soundstage/mixer/fx/ArpEngine.kt`) est
+  l'helper partage (push/arm/allNotesOff/applyTo/toPersisted). Il est restaure au
+  boot, au changement de patch/setlist et a la suppression du patch actif
+  (`MixerViewModel.restoreArpForActivePatch`), **sans ouvrir la fenetre FX**.
+  Fermer la fenetre ne desarme PLUS l'arp (avant : `onDispose` -> `setArpArmed(false)`).
+- **Moteur = UN seul arp** (`mArpChannel`/`mArpEmitChannel`) : un canal a la fois.
+  La restauration arme la PREMIERE piste du patch qui porte un arp vivant
+  (`present && engaged`) et s'arrete. `present` (carte presente) se distingue de
+  `engaged` (carte allumee) : une carte coupee revient coupee, une carte retiree ne
+  revient pas.
+- **Persistance debouncee** : la grille pousse au moteur a chaque changement mais
+  n'ecrit le rack qu'apres 600 ms (`FxDesignHost` : `saveArp()` dans `collectLatest`).
+  `pushArp()` ecrit aussi `engine.arp` pour que la sauvegarde 500 ms du rack
+  enregistre bien la derniere grille.
+- **Banc natif** `tools/arp/arp_check.cpp` (hors Android, `g++ -O2 -std=c++17
+  -I app/src/main/cpp`) : 11 sections, dont la **table des taux** (miroir de
+  `FxDesign.SUBS` : 1/4=24000, 1/8=12000, 1/16=6000, 1/32=3000, 1/8T=8000,
+  1/16T=4000 frames a 120 BPM). `TOUT PASSE` (0 echec).
 
 ## Session 2026-11-04 (New 2, suite) — pistes : 0 piste, source unique, Save, RAM
 Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).

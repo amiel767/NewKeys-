@@ -32,12 +32,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
 
 /**
  * L'état de l'arpégiateur. L'hôte le détient pour pouvoir le pousser au moteur :
  * gardé dans un `remember` de la fenêtre, il aurait été illisible de l'extérieur.
+ *
+ * Il porte EXACTEMENT les huit paramètres du moteur (voir [ArpMapping]) : la page
+ * ne peut pas en montrer un que le moteur ignore, ni l'inverse. `bpm` est un
+ * miroir du tempo global — il vit dans le transport, pas ici, mais on le garde
+ * pour la persistance et pour que `arpRevision()` détecte un changement de tempo.
  */
 class ArpState {
     var sub by mutableStateOf(2)
@@ -45,6 +53,14 @@ class ArpState {
     var steps by mutableStateOf(16)
     var bpm by mutableStateOf(120)
     var swing by mutableStateOf(12)
+    /** Longueur des notes en fraction du pas : 0.05 (piqué) .. 1.0 (legato). */
+    var gate by mutableStateOf(0.7f)
+    /** Étagement sur 1..4 octaves. */
+    var octaves by mutableStateOf(2)
+    /** Latche : le motif continue après le relâchement des touches. */
+    var hold by mutableStateOf(false)
+    /** Facteur de vélocité global 0.15..1.0. */
+    var velAmt by mutableStateOf(0.85f)
     /** Le pas courant, pour la rangée de points. */
     var cur by mutableStateOf(0)
     val vel = mutableStateListOf(*Array(16) { i -> if (i % 4 == 0) 1f else if (i % 2 == 0) .78f else .62f })
@@ -69,8 +85,10 @@ fun AeArpScreen(arp: ArpState, modifier: Modifier = Modifier, onBack: (() -> Uni
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            ArpSegmented(FxDesign.SUBS, arp.sub, 188.dp) { arp.sub = it }
+            ArpSegmented(FxDesign.SUBS, arp.sub, 214.dp) { arp.sub = it }
             ArpSegmentedIcon(FxDesign.STYLES.size, arp.style, Modifier.weight(1f)) { arp.style = it }
+            Box(Modifier.width(1.dp).height(30.dp).background(FxC.line))
+            ArpOctaves(arp.octaves) { arp.octaves = it }
             Box(Modifier.width(1.dp).height(30.dp).background(FxC.line))
             ArpNumStep("Steps", arp.steps, 1, 16, 20) { arp.steps = it }
             // La sortie de l'écran vit DANS sa barre de titre, comme la fermeture de
@@ -82,6 +100,21 @@ fun AeArpScreen(arp: ArpState, modifier: Modifier = Modifier, onBack: (() -> Uni
                     contentAlignment = Alignment.Center,
                 ) { Text("‹", color = FxC.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
             }
+        }
+        // La barre des réglages continus : longueur de note, swing, vélocité, latch.
+        // Ces quatre-là étaient absents — le moteur les lit, la page ne les montrait
+        // pas. BPM reste dans la barre du mixer (réglage global) : le copier ici
+        // ferait dériver les deux affichages.
+        Row(
+            Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(13.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18)))).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ArpSlider("Gate", arp.gate, Modifier.weight(1f)) { arp.gate = it }
+            ArpSlider("Swing", arp.swing / 100f, Modifier.weight(1f)) { arp.swing = (it * 100).toInt() }
+            ArpSlider("Velocity", arp.velAmt, Modifier.weight(1f)) { arp.velAmt = it }
+            ArpHoldToggle(arp.hold) { arp.hold = !arp.hold }
         }
         Column(
             Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))
@@ -244,4 +277,69 @@ private fun StepBtn(txt: String, onClick: () -> Unit) {
         Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).clickableNoRipple(onClick),
         contentAlignment = Alignment.Center,
     ) { Text(txt, color = FxC.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+}
+
+/** L'étagement sur 1..4 octaves, en segments chiffrés. */
+@Composable
+private fun ArpOctaves(value: Int, onSelect: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "OCT", color = FxC.dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.sp, modifier = Modifier.padding(end = 8.dp),
+        )
+        Row(
+            Modifier.height(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xCC0F141D)).padding(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            for (o in 1..4) {
+                Box(
+                    Modifier.width(26.dp).fillMaxHeight().clip(RoundedCornerShape(8.dp))
+                        .then(
+                            if (o == value) Modifier.background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650))))
+                            else Modifier
+                        )
+                        .clickableNoRipple { onSelect(o) },
+                    contentAlignment = Alignment.Center,
+                ) { Text("$o", color = if (o == value) Color(0xFFF1F4FA) else FxC.mute, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) }
+            }
+        }
+    }
+}
+
+/** Un réglage continu, en piste horizontale avec son libellé et sa valeur. */
+@Composable
+private fun ArpSlider(label: String, value: Float, modifier: Modifier, onChange: (Float) -> Unit) {
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label.uppercase(), color = FxC.dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+            Text("${(value * 100).toInt()}%", color = FxC.ink, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Box(
+            Modifier.fillMaxWidth().height(16.dp).pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { off -> onChange((off.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)) },
+                ) { change, _ ->
+                    onChange((change.position.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f))
+                }
+            }.pointerInput(Unit) {
+                detectTapGestures { off -> onChange((off.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)) }
+            },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF1F2539)))
+            Box(Modifier.fillMaxWidth(value.coerceIn(0f, 1f)).height(5.dp).clip(RoundedCornerShape(3.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF6B75A8), Color(0xFF8FB2E8)))))
+        }
+    }
+}
+
+/** Le latch : le motif continue après le relâchement des touches. */
+@Composable
+private fun ArpHoldToggle(on: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.height(30.dp).clip(RoundedCornerShape(10.dp))
+            .background(if (on) Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650))) else SolidColor(Color(0xCC0F141D)))
+            .clickableNoRipple(onClick).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text("HOLD", color = if (on) Color(0xFFF1F4FA) else FxC.mute, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
 }

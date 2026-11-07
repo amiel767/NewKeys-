@@ -35,6 +35,7 @@ class FxPersistenceRoundTripTest {
             sub = 3, style = 1, steps = 12, bpm = 96, swing = 44,
             on = List(16) { it % 3 == 0 },
             vel = List(16) { if (it % 3 == 0) 0.9f else 0.2f },
+            gate = 0.72f, octaves = 3, hold = true, velAmt = 0.4f,
             present = true, engaged = true,
         )
         a.save()
@@ -49,6 +50,12 @@ class FxPersistenceRoundTripTest {
         assertEquals(44, r?.swing)
         assertEquals(List(16) { it % 3 == 0 }, r?.on)
         assertEquals(0.9f, r?.vel?.get(0) ?: 0f, 1e-4f)
+        // Les quatre reglages continus doivent survivre aussi : sans eux l'arp
+        // revenait au gate 0.5 et perdait son latch, donc « le son changeait ».
+        assertEquals(0.72f, r?.gate ?: 0f, 1e-4f)
+        assertEquals(3, r?.octaves)
+        assertTrue("le latch doit survivre", r?.hold == true)
+        assertEquals(0.4f, r?.velAmt ?: 0f, 1e-4f)
         assertTrue("l'arp etait vivant, il doit revenir vivant", r?.engaged == true)
     }
 

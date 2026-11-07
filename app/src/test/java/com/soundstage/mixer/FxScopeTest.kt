@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.soundstage.mixer.fx.FxPersistence
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -86,5 +88,44 @@ class FxScopeTest {
         assertEquals(listOf(0), FxPersistence.allStrips(ctx, "patch_a"))
         assertEquals("a", FxPersistence.load(ctx, "patch_a", 0))
         assertEquals("ab", FxPersistence.load(ctx, "patch_ab", 0))
+    }
+
+    /**
+     * L'arp suit le rack : deux patches d'un meme setlist ne partagent JAMAIS leur
+     * arpegiateur. C'est la propriete « pas de chevauchement entre patches » vue
+     * du cote de la persistance : l'arp d'un patch est dans le strip du patch.
+     */
+    @Test
+    fun twoPatchesDoNotShareTheirArp() {
+        wipe()
+        val a = FxPersistence.Arp(sub = 1, style = 1, steps = 8, hold = true)
+        FxPersistence.save(ctx, "patch_a", 2, FxPersistence.toJson(2, FxPersistence.Strip(
+            instrumentId = -1, instrumentParams = emptyList(), instrumentPreset = null,
+            effects = listOf(null, null, null), abA = null, abB = null, abCur = 0, arp = a,
+        )))
+        val b = FxPersistence.Arp(sub = 5, style = 3, steps = 16, hold = false)
+        FxPersistence.save(ctx, "patch_b", 2, FxPersistence.toJson(2, FxPersistence.Strip(
+            instrumentId = -1, instrumentParams = emptyList(), instrumentPreset = null,
+            effects = listOf(null, null, null), abA = null, abB = null, abCur = 0, arp = b,
+        )))
+        val readA = FxPersistence.fromJson(FxPersistence.load(ctx, "patch_a", 2), 3)?.arp
+        val readB = FxPersistence.fromJson(FxPersistence.load(ctx, "patch_b", 2), 3)?.arp
+        assertEquals(1, readA?.sub); assertEquals(1, readA?.style); assertEquals(8, readA?.steps)
+        assertTrue(readA?.hold == true)
+        assertEquals(5, readB?.sub); assertEquals(3, readB?.style)
+        assertFalse(readB?.hold == true)
+    }
+
+    /**
+     * L'appartenance d'un rack : le patch d'abord, le setlist a defaut, rien sinon.
+     * C'est la meme regle que la cle de stockage, donc deux patches ne peuvent pas
+     * se retrouver dans le meme scope.
+     */
+    @Test
+    fun scopeOfPrefersThePatchThenTheSetlist() {
+        assertEquals("patch_x", FxPersistence.scopeOf("patch_x", "y"))
+        assertEquals("setlist_y", FxPersistence.scopeOf(null, "y"))
+        assertEquals("setlist_y", FxPersistence.scopeOf("   ", "y"))
+        assertEquals("", FxPersistence.scopeOf(null, null))
     }
 }

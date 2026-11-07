@@ -313,10 +313,21 @@ object FxDesign {
 
     fun list(kind: FxKindD): List<FxInfoD> = if (kind == FxKindD.MIDI) midi else audio
 
-    /** Les subdivisions de l'arpégiateur. */
-    val SUBS = listOf("1/4", "1/8", "1/16", "1/32")
+    /**
+     * Les subdivisions de l'arpégiateur, DANS L'ORDRE de `aetherfx::ArpRate` :
+     * Quarter, Eighth, Sixteenth, ThirtySecond, EighthT, SixteenthT. L'index de la
+     * liste EST la valeur du moteur, donc la table de correspondance ne peut pas
+     * dériver (voir [ArpMapping]).
+     */
+    val SUBS = listOf("1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T")
 
-    /** Les sens de parcours. */
+    /**
+     * Les sens de parcours, dans l'ordre de la PAGE. Il ne suit PAS l'ordre du
+     * moteur (`ArpMode` : Up, Down, UpDown, DownUp, Random, Chord) : « random » est
+     * en 4e position ici et en 5e chez le moteur. La correspondance est dans
+     * [ArpMapping], en un seul endroit — la dupliquer ici était la cause du bug
+     * « random joue DownUp ».
+     */
     val STYLES = listOf("up", "down", "updown", "random")
 
     /**
