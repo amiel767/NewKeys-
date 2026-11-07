@@ -18,6 +18,15 @@
   jamais de dump de script par heredoc (il revient en entier), jamais de listing
   complet. Mesures ecrites sur disque, lues par agregat. Une conversation qui
   gonfle coute a CHAQUE tour suivant.
+- **Courbe `FreqLog` = balayage log de la plage du parametre**, `reel = min*(max/min)^n`,
+  jamais une constante. La formule fixe `20*1000^n` ignorait min/max et annoncait
+  6860 Hz pour un reglage declare 100..1000 Hz (BassFreq, + les 3 freq d'EQ). Deux
+  copies a garder d'accord : C++ `aetherfx/fx_registry.h` et Kotlin
+  `mixer/fx/FxRegistry.toReal`. Banc d'invariant : `tools/design/regcheck.cpp`.
+- `grep -r` depuis `app/` ramasse `app/build/kspCaches/*` : une seule ligne de
+  plusieurs centaines de Ko. Toujours `--include=*.kt`/`*.h` ou exclure `app/build/`.
+- **Un banc doit echouer sur une faute connue** avant d'etre cru : `regcheck` remis
+  sur l'ancienne formule sort 90 echecs. Un banc qui passe toujours ne prouve rien.
 - Ne JAMAIS declencher de workflow GitHub (release.yml = workflow_dispatch only).
 - **Pack multi-couches : normaliser PAR COUCHE, jamais globalement.** Une cible RMS
   unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
