@@ -26,7 +26,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, '/tmp')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'kontakt'))
 from ncw_decode import decode_ncw_bytes  # noqa: E402
 from nkx_samples import unique_names, ncw_blocks  # noqa: E402
 
