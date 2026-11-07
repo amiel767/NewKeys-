@@ -96,8 +96,20 @@ def _decode_truncated(data, bits):
 
 
 def read_ncw(path):
+    """Renvoie (canaux, info) pour un fichier NCW."""
+    return parse_ncw(Path(path).read_bytes(), str(path))
+
+
+def decode_ncw_bytes(data):
+    """Meme chose depuis un tampon, au format qu'attendait l'ancien outil piano :
+    dict `data` (canaux), `bps`, `rate`, `channels`, `n`."""
+    chans, info = parse_ncw(data)
+    return dict(data=chans, bps=info["bit_depth"], rate=info["sample_rate"],
+                channels=info["channels"], n=info["num_samples"])
+
+
+def parse_ncw(data, path="<tampon>"):
     """Renvoie (canaux, info). `canaux` est une liste de listes d'entiers."""
-    data = Path(path).read_bytes()
     if len(data) < HEADER_SIZE:
         raise NcwError("%s : trop court pour etre un NCW" % path)
     magic, version = struct.unpack_from("<II", data, 0)
