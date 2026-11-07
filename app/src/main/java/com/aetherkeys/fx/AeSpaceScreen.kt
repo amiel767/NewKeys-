@@ -222,7 +222,7 @@ fun AeSpaceScreen(
         //    taille est libre (aucune contrainte de panneau ne s'applique ici) :
         //    ils prennent la place disponible en haut, pas celle d'une case.
         Row(
-            Modifier.offset(x = 362.dp, y = 0.dp),
+            Modifier.offset(x = 402.dp, y = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(40.dp),
         ) {
