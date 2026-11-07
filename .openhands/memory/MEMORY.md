@@ -334,3 +334,17 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
 - **Verifie : `:app:compileDebugKotlin` BUILD SUCCESSFUL.** Detail : log 2026-11-07.
 - Build : `--offline` echoue (plugin foojay non cache) ; job `&` suspendu par le
   shell -> relancer en avant-plan pour le code de sortie.
+
+## Session 2026-11-04 (4e) — integration orgue (moteur + UI)
+- Pont : `instruments/AeOrganBridge.kt` (`AeOrganListener` -> 36 params `fx_organ.h` ;
+  `AeOrganScreen(c)`). Vibrato : maquette V1 C1 V2 C2 V3 C3 -> moteur V1 V2 V3 C1 C2 C3
+  (`[0,3,1,4,2,5]`). Sans parametre moteur (ecrivent rien) : EQ Mid, Rotary Rise/Fall,
+  Depth/Mic, Horn/Drum, Octave, Model. Pas de STOP rotary dans la maquette.
+- `AeWindow.kt` : ORGAN -> `AeOrganScreen` ; titre + pastille preset supprimes (le panneau
+  occupe toute la scene) ; `startInset=40f` degage la fleche retour.
+- `animateColorAsState` = `androidx.compose.animation` (PAS `.core`).
+- Perf : rail en `drawBehind` qui ne lit pas la valeur ; remplissage en `graphicsLayer`.
+  Thumb = `FaderThumb` natif (20x26 vertical, 18x22 pivot 90). Commit `854aed6`.
+- Tests : `OrganParamMappingTest` (10) + `OrganControlsInputTest` (5) verts. Drawbar haut=0 bas=8.
+- 3 echecs de suite PREEXISTANTS hors sujet : `ExampleRobolectricTest`,
+  `GreetingScreenshotTest`, `PianoPackFormatTest` (pack absent du depot).

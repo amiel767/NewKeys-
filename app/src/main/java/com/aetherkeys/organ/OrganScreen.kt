@@ -41,12 +41,14 @@ fun OrganScreen(
         modifier.fillMaxSize().background(Brush.verticalGradient(listOf(OrganColors.BgMainTop, OrganColors.BgMainBottom))),
     ) {
         val base = LocalDensity.current
-        val availW = (constraints.maxWidth - startInset * base.density).coerceAtLeast(1f)
-        val scale = min(availW / (OrganDesign.W * base.density), constraints.maxHeight / (OrganDesign.H * base.density))
+        // The inset is a design unit: it is added to the block's own width, so the scale keeps both
+        // inside the frame. With no inset this reduces to the plain centred fit.
+        val totalW = ((OrganDesign.W + startInset) * base.density).coerceAtLeast(1f)
+        val scale = min(constraints.maxWidth / totalW, constraints.maxHeight / (OrganDesign.H * base.density))
         CompositionLocalProvider(LocalDensity provides Density(base.density * scale, fontScale = 1f)) {
             val D = OrganDesign
             Box(
-                Modifier.align(Alignment.Center).offset(x = startInset.dp).size(D.W.dp, D.H.dp)
+                Modifier.align(Alignment.Center).offset(x = (startInset / 2f).dp).size(D.W.dp, D.H.dp)
                     // clic hors du bloc Preset → ferme le menu (sans consommer l'événement)
                     .pointerInput(state.dropdownOpen) {
                         if (!state.dropdownOpen) return@pointerInput
