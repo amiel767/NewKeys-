@@ -2,24 +2,28 @@
 
 Document de référence de l'effet **Æther Space** (id moteur 0). Il décrit ce que
 chaque réglage *fait réellement*, la valeur qu'il affiche, et comment on l'a
-mesuré. Deux bancs le vérifient et le tiennent à jour :
+mesuré. Quatre bancs le vérifient et le tiennent à jour :
 
 | Banc | Ce qu'il prouve |
 |---|---|
 | `tools/design/space_bench.cpp` | la reverb fonctionne : elle rend de l'audio, ne sature pas, et chaque réglage a un effet |
 | `tools/design/space_precision.cpp` | chaque réglage a de la **résolution** : zones mortes, niveaux distincts, inversions de sens, et l'étendue des 10 presets |
 | `tools/design/space_accuracy.cpp` | la valeur **affichée est vraie** : RT60, pré-délai et cornes d'EQ mesurés contre l'annonce |
+| `tools/design/regcheck.cpp` | le **contrat** de la table : `paramCount()` du moteur, taille des presets, bornes des courbes, accord registre ↔ moteur |
 
 ```bash
 g++ -O2 -std=c++17 -I app/src/main/cpp -o /tmp/space_bench      tools/design/space_bench.cpp
 g++ -O2 -std=c++17 -I app/src/main/cpp -o /tmp/space_precision  tools/design/space_precision.cpp
 g++ -O2 -std=c++17 -I app/src/main/cpp -o /tmp/space_accuracy   tools/design/space_accuracy.cpp
-/tmp/space_bench && /tmp/space_precision && /tmp/space_accuracy
+g++ -O2 -std=c++17 -I app/src/main/cpp -o /tmp/regcheck         tools/design/regcheck.cpp
+/tmp/space_bench && /tmp/space_precision && /tmp/space_accuracy && /tmp/regcheck
 ```
 
-Les trois doivent afficher `TOUT PASSE`. `space_accuracy` **valide d'abord ses
+Les quatre doivent afficher `TOUT PASSE`. `space_accuracy` **valide d'abord ses
 propres estimateurs** sur des signaux connus et refuse de juger le moteur si l'un
 d'eux échoue : un banc non validé n'a pas le droit de déclarer un moteur faux.
+`regcheck` a été validé de la même façon : remis sur l'ancienne formule de
+fréquence, il sort 90 échecs.
 
 ## Structure du moteur (`app/src/main/cpp/aetherfx/fx_space.h`)
 
@@ -135,7 +139,7 @@ réglage tombe sous 4 valeurs distinctes ou 10 % d'étendue.
 
 Les presets sont aussi comparés **deux à deux** sur quatre descripteurs de rendu
 (champ précoce, queue, aigu, grave) : la paire la plus proche doit rester à plus de
-0,10 de distance. Aujourd'hui : Chamber / Spring à 0,276.
+0,10 de distance. Aujourd'hui : Chamber / Spring à 0,212.
 
 ## Les 10 presets
 
