@@ -170,7 +170,6 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
     BoxWithConstraints(modifier.requiredWidth(RAIL_W.dp).fillMaxHeight()) {
         val d = LocalDensity.current
         val railWpx = with(d) { RAIL_W.dp.toPx() }
-        val thumbWpx = with(d) { THUMB_W.dp.toPx() }
         val thumbHpx = with(d) { THUMB_H.dp.toPx() }
         val hPx = with(d) { maxHeight.toPx() }
         // Rainure du rail, telle que FaderRail la dessine : le capuchon se pose dessus.
@@ -185,15 +184,20 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
         val centre = gA + thumbHpx / 2f + (1f - fill) * travel
         val level = (1f - (centre - gA) / span).coerceIn(0f, 1f)
         FaderRail(accent = Acc, modifier = Modifier.fillMaxSize(), level = level, glow = 0.35f)
+        // Le capuchon est plus large que le rail : centré sur la rainure il dépasse de
+        // (THUMB_W - RAIL_W)/2 de chaque côté. Il est donc centré horizontalement par le
+        // conteneur, et l'offset ne porte que sur la course verticale — le recentrer ici en x
+        // l'aurait décalé d'autant vers la gauche.
         Box(
-            Modifier.offset { IntOffset(((railWpx - thumbWpx) / 2f).roundToInt(), (centre - thumbHpx / 2f).roundToInt()) }
+            Modifier.align(Alignment.TopCenter)
+                .offset { IntOffset(0, (centre - thumbHpx / 2f).roundToInt()) }
                 .requiredSize(THUMB_W.dp, THUMB_H.dp),
             contentAlignment = Alignment.Center,
         ) {
             // Le capot vient du composant du mixeur, mais sa LED floutée est large et molle :
             // la maquette veut une barre nette de 60 % de la largeur et 2 px de haut. On la
             // dessine ici, dans le capot, avec son halo — c'est elle qu'on lit sur un fader.
-            FaderThumb(accent = Acc, modifier = Modifier.fillMaxSize(), showShadow = false, showLed = false)
+            FaderThumb(accent = Acc, modifier = Modifier.fillMaxSize(), showShadow = true, showLed = false)
             LedBar(widthDp = 12f, heightDp = 2f)
         }
         // zone tactile : tout le rail, le capuchon dépassant de 3,5 unités de chaque côté.
@@ -260,12 +264,13 @@ internal fun OrganHFader(value: Float, onValueChange: (Float) -> Unit, modifier:
             }
         }
         Box(
-            Modifier.offset { IntOffset((centre - thumbWpx / 2f).roundToInt(), 0) }.requiredSize(HTHUMB_W.dp, HTHUMB_H.dp),
+            Modifier.align(Alignment.CenterStart)
+                .offset { IntOffset((centre - thumbWpx / 2f).roundToInt(), 0) }.requiredSize(HTHUMB_W.dp, HTHUMB_H.dp),
             contentAlignment = Alignment.Center,
         ) {
             FaderThumb(
                 accent = Acc, modifier = Modifier.requiredSize(HTHUMB_H.dp, HTHUMB_W.dp).graphicsLayer { rotationZ = 90f },
-                showShadow = false, showLed = false,
+                showShadow = true, showLed = false,
             )
             // Barre LED verticale (le fader est couché) : 60 % de la hauteur du capot, 2 px de large.
             LedBar(widthDp = 2f, heightDp = 11f)

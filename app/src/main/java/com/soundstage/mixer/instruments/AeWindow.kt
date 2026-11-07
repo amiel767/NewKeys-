@@ -180,7 +180,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // Shown only once a knob has been moved away from the selected preset. The piano's
             // own model list already runs along the top-right, so its Save sits at the far right
             // of the header; the other instruments keep it just left of the PRESETS chip.
-            if (manager.isModified(strip)) {
+            if (manager.isModified(strip) && s.instrument != AeInstrument.ORGAN) {
                 if (s.instrument == AeInstrument.PIANO) SaveButton(winTh, 916, 7) { naming = true }
                 else SaveButton(winTh, 590, 7) { naming = true }
             }
