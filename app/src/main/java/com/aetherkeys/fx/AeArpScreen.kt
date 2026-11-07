@@ -61,7 +61,7 @@ private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = composed
 }
 
 @Composable
-fun AeArpScreen(arp: ArpState, modifier: Modifier = Modifier) {
+fun AeArpScreen(arp: ArpState, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(
             Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(13.dp))
@@ -73,6 +73,15 @@ fun AeArpScreen(arp: ArpState, modifier: Modifier = Modifier) {
             ArpSegmentedIcon(FxDesign.STYLES.size, arp.style, Modifier.weight(1f)) { arp.style = it }
             Box(Modifier.width(1.dp).height(30.dp).background(FxC.line))
             ArpNumStep("Steps", arp.steps, 1, 16, 20) { arp.steps = it }
+            // La sortie de l'écran vit DANS sa barre de titre, comme la fermeture de
+            // Space : la fenêtre n'ajoute plus d'en-tête, donc plus de cadre en haut.
+            if (onBack != null) {
+                Box(Modifier.width(1.dp).height(30.dp).background(FxC.line))
+                Box(
+                    Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).clickableNoRipple(onBack),
+                    contentAlignment = Alignment.Center,
+                ) { Text("‹", color = FxC.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+            }
         }
         Column(
             Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))

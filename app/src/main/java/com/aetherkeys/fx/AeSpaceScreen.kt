@@ -229,44 +229,33 @@ fun AeSpaceScreen(
             )
         }
 
-        // ── LES GROUPES DE LA RÉFÉRENCE, à droite. La largeur des panneaux se
-        //    DÉDUIT de la place restante : les largeurs fixes (84 dp) étaient plus
-        //    étroites que deux potards de 44 dp, qui se chevauchaient, et la
-        //    rangée sortait de la fenêtre (le panneau EQ était coupé). Ici la
-        //    rangée partage ce qui reste et le potard suit la largeur du panneau.
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().padding(start = 362.dp, end = 16.dp).offset(y = 100.dp),
-        ) {
-            val gap = 7.dp
-            val panelW = (maxWidth - gap * (fx.groups.size - 1)) / fx.groups.size
-            val knob = min(44f, (panelW.value - 8f) / 2f).dp
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                fx.groups.forEachIndexed { gi, g ->
-                    val col = pal[gi % pal.size]
-                    Column(
-                        Modifier.width(panelW)
-                            .drawBehind {
-                                drawRoundRect(col.copy(alpha = .10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx()))
-                            }
-                            .border(2.6.dp, col, RoundedCornerShape(24.dp))
-                            .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            g.title, color = SPACE_INK, fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
-                            fontFamily = FxFonts.ui, letterSpacing = .4.sp,
-                        )
-                        g.keys.chunked(if (g.keys.size > 2) 2 else 1).forEach { rowKeys ->
-                            Row(Modifier.fillMaxWidth()) {
-                                rowKeys.forEach { k ->
-                                    val spec = fx.byKey[k] ?: return@forEach
-                                    Box(Modifier.weight(1f)) {
-                                        SpaceRingKnob(
-                                            label = spec.name, spec = spec, value = v(k), color = col, size = knob,
-                                            onChange = { set(k, it) }, onReset = { set(k, spec.def) },
-                                        )
-                                    }
+        // ── LES GROUPES DE LA RÉFÉRENCE, à droite.
+        Row(Modifier.offset(362.dp, 100.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            fx.groups.forEachIndexed { gi, g ->
+                val col = pal[gi % pal.size]
+                Column(
+                    Modifier.width(g.width.dp)
+                        .drawBehind {
+                            drawRoundRect(col.copy(alpha = .10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx()))
+                        }
+                        .border(2.6.dp, col, RoundedCornerShape(24.dp))
+                        .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        g.title, color = SPACE_INK, fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
+                        fontFamily = FxFonts.ui, letterSpacing = .4.sp,
+                    )
+                    g.keys.chunked(if (g.keys.size > 2) 2 else 1).forEach { rowKeys ->
+                        Row(Modifier.fillMaxWidth()) {
+                            rowKeys.forEach { k ->
+                                val spec = fx.byKey[k] ?: return@forEach
+                                Box(Modifier.weight(1f)) {
+                                    SpaceRingKnob(
+                                        label = spec.name, spec = spec, value = v(k), color = col, size = 44.dp,
+                                        onChange = { set(k, it) }, onReset = { set(k, spec.def) },
+                                    )
                                 }
                             }
                         }

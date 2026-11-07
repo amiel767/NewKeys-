@@ -315,6 +315,9 @@ private fun SlotCard(
  * mot pour mot `AeSpaceScreen` : « Space » dans la teinte du preset, puis le
  * STYLE du preset (pas son nom) dans la teinte suivante. La carte ne dit donc
  * ni le preset ni une approximation : elle dit la même chose que l'écran.
+ *
+ * Le corps reste celui des autres cartes (26 sp au plus) et CENTRÉ dans la
+ * case : un titre à l'échelle de l'écran de l'effet (42 sp) débordait la case.
  */
 @Composable
 private fun SpaceCardTitle(preset: String, modifier: Modifier) {
@@ -322,12 +325,8 @@ private fun SpaceCardTitle(preset: String, modifier: Modifier) {
     val ramp = pal.colors
     val style = spaceStyleFor(preset)
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        // Même lettrage que l'écran (Space Grotesk, Bold, interlettre serrée) et
-        // même CORPS quand la case le permet : l'écran écrit « SpaceHall » sur
-        // 117 dp à 42 sp, soit ~0,31 em par caractère. La case en tient 42 sp
-        // tant que le style reste court ; seule une case plus étroite rétrécit.
         val chars = style.label.length + 5
-        val size = min(42f, maxWidth.value / (chars * 0.34f)).coerceAtLeast(14f)
+        val size = min(26f, maxWidth.value / (chars * 0.62f)).coerceAtLeast(11f)
         Text(
             buildAnnotatedString {
                 withStyle(SpanStyle(color = ramp[0])) { append("Space") }
@@ -421,17 +420,24 @@ fun FxSlotsWindow(
             Modifier.align(Alignment.Center).size(w, h).shadow(24.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(WindowBg).border(1.dp, Line, shape)
                 .clickable(remember { MutableInteractionSource() }, null) {}
         ) {
-            Row(
-                Modifier.fillMaxWidth().height(54.dp).drawBehind { drawLine(Line, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), 1f) }.padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (view !is FxView.Slots) SmallButton("‹", controller::back, 36.dp) else Box(Modifier.size(4.dp, 26.dp).background(trackColor, RoundedCornerShape(2.dp)))
-                Text(
-                    when (view) { FxView.Slots -> "$trackName · FX"; is FxView.Catalog -> "Add FX"; is FxView.Editor -> kind?.title ?: "" },
-                    Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 16.sp, fontWeight = FontWeight.Black, textAlign = if (view is FxView.Catalog) TextAlign.Center else TextAlign.Start
-                )
-                if (view is FxView.Editor) state.chain[view.ref]?.let { s -> Power(s.on, 36.dp) { controller.toggle(view.ref) } }
-                SmallButton("✕", onClose, 36.dp)
+            // La vue d'un EFFET n'a pas d'en-tête : l'écran de l'effet occupe toute
+            // la fenêtre (son propre en-tête serait un cadre de plus et un second
+            // nom). Les vues de navigation — les emplacements et le catalogue —
+            // gardent la barre, qui porte leur titre et la sortie.
+            if (view !is FxView.Editor) {
+                Row(
+                    Modifier.fillMaxWidth().height(54.dp).drawBehind { drawLine(Line, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), 1f) }.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (view is FxView.Catalog) SmallButton("‹", controller::back, 36.dp)
+                    else Box(Modifier.size(4.dp, 26.dp).background(trackColor, RoundedCornerShape(2.dp)))
+                    Text(
+                        if (view is FxView.Catalog) "Add FX" else "$trackName · FX",
+                        Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 16.sp, fontWeight = FontWeight.Black,
+                        textAlign = if (view is FxView.Catalog) TextAlign.Center else TextAlign.Start,
+                    )
+                    SmallButton("✕", onClose, 36.dp)
+                }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Crossfade(view, animationSpec = tween(220), label = "view") { v ->
@@ -450,15 +456,6 @@ fun FxSlotsWindow(
                         Text("${s.kind.title} removed", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Text("UNDO", Modifier.clickable { controller.undoRemove() }, color = Pale2, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
-                }
-            }
-            if (view is FxView.Editor) Row(
-                Modifier.fillMaxWidth().height(52.dp).drawBehind { drawLine(Line, Offset(0f, 0.5f), Offset(size.width, 0.5f), 1f) }.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
-            ) {
-                Text("Discard Changes", Modifier.clickable(remember { MutableInteractionSource() }, null, onClick = controller::back), color = Color(0xFFB5BEDB), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Box(Modifier.height(38.dp).clip(RoundedCornerShape(11.dp)).background(Brush.verticalGradient(listOf(Pale1, Pale2))).pressable(onClick = controller::confirm).padding(horizontal = 28.dp), contentAlignment = Alignment.Center) {
-                    Text("Confirm", color = Color(0xFF1B2440), fontSize = 13.5.sp, fontWeight = FontWeight.Black)
                 }
             }
         }

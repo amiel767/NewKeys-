@@ -126,7 +126,7 @@ fun FxDesignHost(
             onClose = onClose,
             editor = { kind, ref ->
                 when (kind) {
-                    FxKind.Arp -> AeArpScreen(model.arp, Modifier.fillMaxSize())
+                    FxKind.Arp -> AeArpScreen(model.arp, Modifier.fillMaxSize()) { model.fx.back() }
                     FxKind.Reverb -> model.SpaceEditor(ref)
                     else -> {}
                 }
