@@ -205,22 +205,9 @@ fun AeSpaceScreen(
             SpaceFlatText("SAVE", pal[3], saveOpen) { saveOpen = !saveOpen; dropOpen = false }
         }
 
-        // ── LA COLONNE DE GAUCHE : MIX puis PRE-DELAY, deux anneaux fins.
-        Column(
-            Modifier.offset(22.dp, 112.dp).width(92.dp),
-            verticalArrangement = Arrangement.spacedBy(26.dp),
-        ) {
-            listOf("mix" to 0, "pre" to 1).forEach { (k, ci) ->
-                val spec = fx.byKey[k] ?: return@forEach
-                SpaceRingKnob(
-                    label = spec.name, spec = spec, value = v(k), color = pal[ci], size = 54.dp,
-                    onChange = { set(k, it) }, onReset = { set(k, spec.def) },
-                )
-            }
-        }
-
-        // ── LE GROS POTARD : DECAY. Appui = ondulations.
-        Box(Modifier.offset(116.dp, 78.dp)) {
+        // ── LE GROS POTARD : DECAY, décalé à GAUCHE pour prendre la place que
+        //    MIX et PRE-DELAY occupaient. Appui = ondulations.
+        Box(Modifier.offset(84.dp, 78.dp)) {
             BigDecayKnob(
                 style = style, pal = pal, decay01 = decaySpec.norm(decayShown), t = t, fires = fires,
                 decayText = FxDesign.fmt(decayShown, decaySpec),
@@ -229,33 +216,71 @@ fun AeSpaceScreen(
             )
         }
 
-        // ── LES GROUPES DE LA RÉFÉRENCE, à droite.
-        Row(Modifier.offset(362.dp, 100.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            fx.groups.forEachIndexed { gi, g ->
-                val col = pal[gi % pal.size]
-                Column(
-                    Modifier.width(g.width.dp)
-                        .drawBehind {
-                            drawRoundRect(col.copy(alpha = .10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx()))
-                        }
-                        .border(2.6.dp, col, RoundedCornerShape(24.dp))
-                        .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        g.title, color = SPACE_INK, fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
-                        fontFamily = FxFonts.ui, letterSpacing = .4.sp,
-                    )
-                    g.keys.chunked(if (g.keys.size > 2) 2 else 1).forEach { rowKeys ->
-                        Row(Modifier.fillMaxWidth()) {
-                            rowKeys.forEach { k ->
-                                val spec = fx.byKey[k] ?: return@forEach
-                                Box(Modifier.weight(1f)) {
-                                    SpaceRingKnob(
-                                        label = spec.name, spec = spec, value = v(k), color = col, size = 44.dp,
-                                        onChange = { set(k, it) }, onReset = { set(k, spec.def) },
-                                    )
+        // ── LA BARRE DU HAUT : MIX puis PRE-DELAY, juste AU-DESSUS des panneaux et
+        //    à leur aplomb. Chacun est un anneau FIN, son nom et sa valeur à
+        //    DROITE. Ils étaient empilés dans la colonne de gauche, où leur texte
+        //    vertical concurrençait DECAY.
+        Row(
+            Modifier.offset(x = 362.dp, y = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(34.dp),
+        ) {
+            listOf("mix" to 0, "pre" to 1).forEach { (k, ci) ->
+                val spec = fx.byKey[k] ?: return@forEach
+                SpaceRingKnob(
+                    label = spec.name, spec = spec, value = v(k), color = pal[ci], size = 44.dp,
+                    onChange = { set(k, it) }, onReset = { set(k, spec.def) },
+                    labelSp = 12.5f, valueSp = 12.5f, horizontal = true,
+                )
+            }
+        }
+
+        // ── LES GROUPES DE LA RÉFÉRENCE, à droite. Leur largeur se DÉDUIT de la
+        //    place restante : les largeurs fixes (160 + 4×84 = 496, plus 28 de
+        //    gouttières) partaient de x=362 et sortaient de la fenêtre de 860 — le
+        //    panneau EQ était coupé et la rangée dépassait le cadre. Ici la rangée
+        //    se partage ce qui reste, au prorata des colonnes de chaque panneau, et
+        //    le potard suit la largeur obtenue.
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().padding(start = 362.dp, end = 16.dp).offset(y = 100.dp),
+        ) {
+            val gap = 7.dp
+            val cols = fx.groups.map { if (it.keys.size > 2) 2 else 1 }
+            val units = cols.sum().coerceAtLeast(1)
+            val free = maxWidth - gap * (fx.groups.size - 1)
+            val unit = free / units
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                fx.groups.forEachIndexed { gi, g ->
+                    val col = pal[gi % pal.size]
+                    val c = cols[gi]
+                    val panelW = unit * c
+                    val knob = min(44f, ((panelW - 10.dp) / c).value).coerceAtLeast(24f)
+                    val f = (knob / 44f).coerceIn(.72f, 1f)
+                    Column(
+                        Modifier.width(panelW)
+                            .drawBehind {
+                                drawRoundRect(col.copy(alpha = .10f), cornerRadius = CornerRadius(24.dp.toPx()), style = Stroke(12.dp.toPx()))
+                            }
+                            .border(2.6.dp, col, RoundedCornerShape(24.dp))
+                            .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            g.title, color = SPACE_INK, fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
+                            fontFamily = FxFonts.ui, letterSpacing = .4.sp, maxLines = 1,
+                        )
+                        g.keys.chunked(c).forEach { rowKeys ->
+                            Row(Modifier.fillMaxWidth()) {
+                                rowKeys.forEach { k ->
+                                    val spec = fx.byKey[k] ?: return@forEach
+                                    Box(Modifier.weight(1f)) {
+                                        SpaceRingKnob(
+                                            label = spec.name, spec = spec, value = v(k), color = col,
+                                            size = knob.dp, labelSp = 11.5f * f, valueSp = 11.5f * f,
+                                            onChange = { set(k, it) }, onReset = { set(k, spec.def) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -521,6 +546,7 @@ private fun SpaceRingKnob(
     labelSp: Float = 11.5f,
     valueSp: Float = 11.5f,
     knobSize: Dp = size,
+    horizontal: Boolean = false,
 ) {
     val shown by animateFloatAsState(value, spring(1f, Spring.StiffnessMediumLow), label = "knob")
     val n = spec.norm(shown)
@@ -528,12 +554,7 @@ private fun SpaceRingKnob(
     var base = 0f
     var acc = 0f
     val full = with(LocalDensity.current) { 150.dp.toPx() }
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            label, color = Color(0xFFEDEDED), fontSize = labelSp.sp, fontWeight = FontWeight.Bold,
-            fontFamily = FxFonts.ui, maxLines = 1,
-        )
-        Spacer(Modifier.height(3.dp))
+    val dial: @Composable () -> Unit = {
         Canvas(
             Modifier.size(knobSize)
                 .pointerInput(spec.key) { detectTapGestures(onDoubleTap = { onReset() }) }
@@ -560,11 +581,43 @@ private fun SpaceRingKnob(
                 drawLine(col, Offset(c.x, c.y - 22f * u), Offset(c.x, c.y - 1f * u), 4.4f * u, StrokeCap.Round)
             }
         }
-        Spacer(Modifier.height(3.dp))
-        Text(
-            FxDesign.fmt(shown, spec), color = Color(0xFFEDEDED), fontSize = valueSp.sp,
-            fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui, maxLines = 1,
-        )
+    }
+    val caption: @Composable (Alignment.Horizontal) -> Unit = { align ->
+        Column(horizontalAlignment = align) {
+            Text(
+                label, color = Color(0xFFEDEDED), fontSize = labelSp.sp, fontWeight = FontWeight.Bold,
+                fontFamily = FxFonts.ui, maxLines = 1,
+            )
+            Text(
+                FxDesign.fmt(shown, spec), color = Color(0xFFEDEDED), fontSize = valueSp.sp,
+                fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui, maxLines = 1,
+            )
+        }
+    }
+    // Deux dispositions, une seule géométrie de potard. À droite (par défaut), le
+    // nom est AU-DESSUS et la valeur EN DESSOUS — c'est la disposition des
+    // panneaux, où les cases sont étroites et hautes. À plat, les deux textes
+    // passent à DROITE du disque : c'est la disposition de la barre du haut, où
+    // la place manque en hauteur.
+    if (horizontal) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            dial()
+            caption(Alignment.Start)
+        }
+    } else {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                label, color = Color(0xFFEDEDED), fontSize = labelSp.sp, fontWeight = FontWeight.Bold,
+                fontFamily = FxFonts.ui, maxLines = 1,
+            )
+            Spacer(Modifier.height(3.dp))
+            dial()
+            Spacer(Modifier.height(3.dp))
+            Text(
+                FxDesign.fmt(shown, spec), color = Color(0xFFEDEDED), fontSize = valueSp.sp,
+                fontWeight = FontWeight.Bold, fontFamily = FxFonts.ui, maxLines = 1,
+            )
+        }
     }
 }
 

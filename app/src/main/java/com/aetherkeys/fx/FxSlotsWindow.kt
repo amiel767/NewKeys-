@@ -291,21 +291,15 @@ private fun SlotCard(
             Power(slot.on, 30.dp, onToggle)
         }
     } else {
-        // AUDIO : rien qu'un grand titre au centre, dans le style et la couleur du
-        // FX (comme SPACE). L'aperçu n'a pas sa place ici — la case audio est
-        // étroite et doit rester libre pour en ajouter d'autres.
-        Column(
-            card.pressable(onLongPress = { leaving = true }, onClick = onOpen),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 6.dp),
-                horizontalArrangement = Arrangement.End,
-            ) { Power(slot.on, 28.dp, onToggle) }
-            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+        // AUDIO : rien qu'un titre au centre, dans le style et la couleur du FX
+        // (comme SPACE). Le power est POSÉ dans le coin : s'il prenait une ligne à
+        // lui, le titre serait centré sous lui, donc visiblement BAS dans la case.
+        Box(card.pressable(onLongPress = { leaving = true }, onClick = onOpen)) {
+            Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
                 if (slot.kind == FxKind.Reverb) SpaceCardTitle(slot.summary, Modifier.fillMaxWidth())
                 else FxTitle(slot.kind.title, slot.kind.color, Modifier.fillMaxWidth())
             }
+            Box(Modifier.align(Alignment.TopEnd).padding(end = 6.dp, top = 6.dp)) { Power(slot.on, 28.dp, onToggle) }
         }
     }
 }
