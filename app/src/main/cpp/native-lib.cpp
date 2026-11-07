@@ -334,6 +334,13 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_actualSampleRate(
     return static_cast<jint>(gAudioEngine.actualSampleRate());
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_lastRenderMicros(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jlong>(gAudioEngine.lastRenderMicros());
+}
+
 JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterEq(
         JNIEnv *env,

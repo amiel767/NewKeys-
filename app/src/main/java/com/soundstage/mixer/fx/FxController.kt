@@ -113,6 +113,10 @@ class FxController(
         params[slot] = MutableList(FxRegistry.MAX_PARAMS) { i ->
             if (id >= 0) FxRegistry.info(id).params.getOrNull(i)?.default ?: 0f else 0f
         }
+        // Clearing the slot must also clear the name it carried. Leaving it made
+        // the *next* effect installed there inherit the previous one's preset
+        // label: the rack showed "Cathedral" on a freshly added Echo.
+        if (slot < presetNames.size) presetNames[slot] = null
         safe(Unit, "fxCollectGarbage") { b.fxCollectGarbage() }
         return true
     }
@@ -196,6 +200,13 @@ class FxController(
     /** User-facing preset name per slot, for persistence. */
     val presetNames = mutableStateListOf<String?>().apply { repeat(slotCount) { add(null) } }
 
+    /**
+     * The MIDI slot: the arpeggiator card. It is not a chain effect, so its whole
+     * setting (grid, tempo, presence, engagement) is kept here and written to the
+     * same strip blob. A track has one; the master has none.
+     */
+    var arp: FxPersistence.Arp? = null
+
     private fun snapshot(): FxPersistence.Strip {
         val instPreset = if (instrumentId < 0) null
             else FxRegistry.info(instrumentId).presets
@@ -211,6 +222,7 @@ class FxController(
             abA = abA?.toList(),
             abB = abB?.toList(),
             abCur = abCur,
+            arp = arp,
         )
     }
 
@@ -244,5 +256,6 @@ class FxController(
         abA = saved.abA?.toFloatArray()
         abB = saved.abB?.toFloatArray()
         abCur = saved.abCur
+        arp = saved.arp
     }
 }

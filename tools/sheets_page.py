@@ -9,22 +9,69 @@ Usage : python3 tools/sheets_page.py
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 
+from PIL import Image
+
 PUB = Path("/workspace/dl/pub/sheets")
+SRC = Path("app/src/test/screenshots")
+
+# Meme convention que tools/shots_page.py : une capture ne se livre jamais en
+# PNG brut. Vignette 520 px q68 pour la grille, pleine 1500 px q78 pour le
+# detail. Un resize a la moitie de la capture perd la moitie de la definition :
+# la pleine largeur doit rester 1500 px.
+THUMB_W = 520
+THUMB_Q = 68
+FULL_W = 1500
+FULL_Q = 78
+
+
+def encode(src: Path) -> tuple[str, str] | None:
+    """Reencode une capture PNG en deux WebP ; renvoie (vignette, pleine)."""
+    if not src.exists():
+        return None
+    im = Image.open(src).convert("RGB")
+    tw = min(THUMB_W, im.width)
+    tim = im.resize((tw, round(tw * im.height / im.width)), Image.LANCZOS)
+    tpath = PUB / f"{src.stem}.thumb.webp"
+    tim.save(tpath, "WEBP", quality=THUMB_Q, method=5)
+
+    fw = min(FULL_W, im.width)
+    fim = im if fw == im.width else im.resize((fw, round(fw * im.height / im.width)), Image.LANCZOS)
+    fpath = PUB / f"{src.stem}.webp"
+    fim.save(fpath, "WEBP", quality=FULL_Q, method=5)
+    return tpath.name, fpath.name
 OUT = PUB / "index_page.html"
 
 STATES = [
-    ("01_library.png", "Bibliothèque", "Grille de cartes, chaque carte a la couleur de la feuille."),
-    ("02_floating_one.png", "Flottant · une section", "Double-tap sur une carte : elle se pose sur le mixer, sans contour, une section."),
-    ("03_picker_open.png", "Sélecteur de sections", "Le bouton calques choisit ce qui s'affiche."),
-    ("04_floating_many.png", "Flottant · plusieurs sections", "Verse + Chorus + Bridge, défilables dans la carte."),
+    ("01_library.png", "Bibliothèque · grille", "Cartes riches : tranche de couleur, titre, accords sur rail, tonalité, BPM, nombre de sections, date."),
+    ("02_floating_one.png", "Flottant · une section", "Double-tap sur une carte : elle se pose sur le mixer, une section. X en haut à droite, verrou en bas à gauche, poignée au centre."),
+    ("03_picker_open.png", "Sections DANS la carte", "Tap sur la carte ou sur la pastille : la liste s'ouvre dans la carte, pas dans un popover externe."),
+    ("04_floating_many.png", "Flottant · plusieurs sections", "Verse + Chorus + Bridge ; le balayage horizontal passe d'une section à l'autre."),
     ("05_editor.png", "Éditeur", "Ruban 40 % / page 60 %, quatre onglets."),
 ]
 
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
-    ("floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : carte à la couleur de la feuille, 371 dp, sans contour."),
+    ("sheets_home_real.png", "L'accueil, rendu par Compose",
+     "Les Sets sont en haut, toujours visibles : une rangée de cartes de verre dépoli de 272 × 96 dp. L'aperçu d'accords y occupe toute la rangée basse, à 21 sp. En dessous, la liste, une feuille par ligne de 43,5 dp, aperçu à 19 sp."),
+    ("sheets_sets_real.png", "Les Sets, rendus par Compose",
+     "Un Set est une carte large : nom choisi, couleur propre, aperçu des premières feuilles et de leurs accords, nombre de feuilles. On entre dans un Set par sa carte ; le Set ouvert se marque « OUVERT »."),
+    ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
+     "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. La rangée de Sets reste visible pour passer d'un Set à l'autre ; « ← Tout » en sort."),
+    ("sheets_settings_real.png", "Les réglages, un panneau et non une page",
+     "Les réglages s'ouvrent en <b>panneau ancré en haut à droite</b>, comme ceux de Setlists : 538 × 334 dp, la bibliothèque reste visible derrière. Même matière (dégradé, liseré clair, ombre 14 dp) et même apparition (fondu + montée, 220 ms). Le contenu tient en deux colonnes, sans défilement. Chaque contrôle s'explique : le groupe Notation dit ce que le choix change sur les partitions affichées, la tonalité par défaut écrit Bb et non A#, et les interrupteurs de scène disent ce qu'ils modifient."),
+    ("sheets_floating_quick_edit_real.png", "L'édition rapide, rendue par Compose",
+     "Un appui long sur la scène ouvre la ligne d'accords de la section affichée, au clavier système. C'est le langage du chart (« 1 4 | 5 6m | % »), donc rien de nouveau à apprendre ; l'éditeur complet reste au double tap."),
+    ("sheets_floating_real.png", "Le flottant, rendu par Compose",
+     "X fondu en haut à droite, verrou en bas à gauche, pastilles de redimensionnement quasi invisibles collées aux bords (bas = hauteur, gauche = largeur), pastille de section en bas à droite."),
+    ("sheets_floating_tall_real.png", "La pastille du bas allonge la fenêtre",
+     "On tire la pastille fine du bas : la fenêtre s'allonge et la section suivante s'affiche dès qu'elle entre dans la hauteur."),
+    ("sheets_floating_wide_real.png", "La pastille de gauche élargit, les polices suivent",
+     "On tire la pastille fine de gauche : la fenêtre s'élargit, les accords se replacent et la taille des polices grandit avec la largeur."),
+    ("sheets_floating_sections_real.png", "La liste de sections, rendue par Compose",
+     "La liste s'ouvre DANS la carte, par-dessus le chart, avec un voile à la teinte de l'encre."),
 ]
 
 STYLE = """
@@ -54,51 +101,90 @@ figcaption span{color:var(--dim)}
 """
 
 
+def clean_stale_pngs() -> None:
+    """Retire du dossier publie les PNG bruts : la page ne sert que du WebP."""
+    for old in PUB.glob("*.png"):
+        old.unlink()
+
+
 def main() -> None:
+    clean_stale_pngs()
     parts = [
         "<!doctype html><html lang=fr><meta charset=utf-8>",
         "<meta name=viewport content='width=device-width,initial-scale=1'>",
-        "<title>Refonte Sheets — maquette</title>",
+        "<title>Refonte Sheets — accueil et scène</title>",
         f"<style>{STYLE}</style>",
-        "<header><h1>Refonte <span>Sheets</span> — maquette de référence</h1>",
-        "<div class=sub>Source : <code>app/assets/SheetsPreview.jsx</code> · 891 × 411 dp, "
-        "la même convention que les autres maquettes du dépôt.</div></header>",
+        "<header><h1>Refonte <span>Sheets</span> — accueil et scène flottante</h1>",
+        "<div class=sub>Rendu <b>réel</b> du code Compose, capturé par Roborazzi en 2450 × 1130 "
+        "(w851dp-h393dp-440dpi, la convention des autres captures du dépôt). "
+        "Les PNG bruts pèsent 4,4 Mo ; la page ne sert que du WebP.</div></header>",
         "<div class=wrap>",
         "<a class=cta href='/sheets/'>▶ Ouvrir la maquette vivante <small>interactive — cliquable</small></a>",
-        "<h2>Les cinq états</h2>",
+        "<h2>Les cinq états de la maquette</h2>",
         "<div class=grid>",
     ]
     for f, title, desc in STATES:
         if not (PUB / f).exists():
             continue
         parts.append(
-            f"<figure><img src='/{html.escape(f)}' alt='{html.escape(title)}'>"
+            f"<figure><img src='{html.escape(f)}' alt='{html.escape(title)}'>"
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
-    parts.append("<h2>Le rendu Android réel</h2>")
-    parts.append("<div class=note>La maquette JSX est la référence de design ; voici ce que le code Compose produit vraiment, "
-                 "capturé par Roborazzi. C'est ce rendu qui a mis au jour la carte invisible sans rectangle d'origine.</div>")
+    parts.append("<h2>Les neuf captures</h2>")
+    parts.append("<div class=note>Chaque vignette pèse ~3 Ko ; cliquer ouvre la version 1500 px. "
+                 "Aucun PNG brut n'est servi : une capture Roborazzi pèse ~0,5 Mo, la même en WebP ~18 Ko.</div>")
     parts.append("<div class=grid>")
+    before = after = 0
     for f, title, desc in REAL:
-        if not (PUB / f).exists():
+        src = SRC / f.replace("_real.png", ".png")
+        enc = encode(src)
+        if enc is None:
             continue
+        thumb, full = enc
+        before += src.stat().st_size
+        after += (PUB / full).stat().st_size
         parts.append(
-            f"<figure><img src='/{html.escape(f)}' alt='{html.escape(title)}'>"
+            f"<figure><a href='{html.escape(full)}'><img loading=lazy src='{html.escape(thumb)}' alt='{html.escape(title)}'></a>"
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
+    if before:
+        parts.append(
+            f"<div class=note>{before / 1048576:.1f} Mo de PNG brut &rarr; {after / 1048576:.2f} Mo de WebP "
+            f"(vignette {THUMB_W} px, pleine {FULL_W} px). Cliquer une image ouvre la version pleine.</div>"
+        )
     parts.append(
-        "<h2>Ce que la maquette fixe</h2>"
+        "<h2>Ce que la refonte change</h2>"
         "<div class=note>"
-        "<b>Le flottant, la partie en refonte :</b>"
         "<ul>"
-        "<li>Double-tap sur une carte → la carte se pose <b>sur le mixer</b>, à sa couleur, <b>sans contour</b>.</li>"
-        "<li>Déplaçable <b>n'importe où</b>, sans aimantation (aujourd'hui : aimant gauche/droite seulement).</li>"
-        "<li>Le bouton <b>calques</b> choisit <b>une</b> section ou <b>plusieurs</b> (Verse, Chorus, Bridge…).</li>"
-        "<li>Verrou et double-tap pour ouvrir l'éditeur restent.</li>"
+        "<li>① Les Sets <b>ne sont plus un filtre</b> ni une grille : ce sont des <b>cartes en haut</b>, "
+        "toujours visibles, à la <b>même hauteur que la page Setlists</b> (96 dp).</li>"
+        "<li>② <b>Pas d'icône dossier, pas d'aperçu de Set</b> : la carte porte le nom choisi, sa couleur, "
+        "les premières feuilles et l'aperçu de leurs accords.</li>"
+        "<li>③ Le contrôle <b>« + Set »</b> est aligné avec <b>Favoris</b> ; le nom d'un Set n'apparaît "
+        "qu'à un seul endroit (sa carte).</li>"
+        "<li>④ La liste du bas : une feuille par ligne de <b>43,5 dp</b> (−25 %), l'aperçu d'accords "
+        "passant de 15 à <b>19 sp</b>. Moins de matière, plus de musique.</li>"
+        "<li>⑤ Dans un Set, la rangée reste visible pour <b>passer d'un Set à l'autre</b> ; « ← Tout » en sort.</li>"
+        "<li>⑥ La scène flottante est <b>allégée</b> : pastilles quasi invisibles collées aux bords, X fondu.</li>"
+        "<li>⑦ <b>Édition rapide</b> : un appui long relit la ligne d'accords de la section affichée, "
+        "au clavier système — et le mixer suit la section affichée, plus seulement la première.</li>"
+        "<li>⑧ <b>Orthographe des notes</b> : elle suit l'armure. Une même feuille écrivait « A# » en Bb "
+        "et « Ab » en A ; désormais une seule table de noms, dérivée de <code>Theory.noteName</code>, "
+        "partagée par la liste, l'éditeur et l'export.</li>"
+        "<li>⑨ <b>Réglages</b> refaits pour la nouvelle interface : chaque contrôle explique ce qu'il change, "
+        "et le réglage « sens du balayage », stocké mais <b>jamais lu</b> depuis toujours, est enfin branché.</li>"
+        "<li>⑩ <b>Verre dépoli</b> : les cartes et les lignes n'ont plus de contour dessiné. Un fond translucide "
+        "teinté, un grain fin, un reflet spéculaire en diagonale, une lumière d'arête en haut et un liseré "
+        "qui n'apparaît que là où la lumière accroche. Mesuré : le reflet décroît de 79 à 49 de la gauche "
+        "vers la droite, et le bord haut ne présente <b>aucun saut</b> de luminance — c'est une lumière, pas un trait.</li>"
+        "<li>⑪ L'<b>aperçu d'accords</b> des cartes de Set passe de 14 à <b>21 sp</b> (+50 %) : il occupe "
+        "désormais toute la rangée basse, le compteur de feuilles remontant dans l'en-tête.</li>"
+        "<li>⑫ Le verre porte <b>la couleur vive de la feuille</b>, sans passer par le gris de la surface : "
+        "chroma mesuré 28,8 → <b>68,5</b> sur les lignes. Et <b>plus aucune ombre portée</b> : sous les cartes "
+        "on relit exactement la page (32 de luminance, aucun assombrissement).</li>"
         "</ul>"
-        "<b>Ce qui ne change pas :</b> palette app, rayons, typo, grille de la bibliothèque, ruban 40 / page 60."
         "</div>"
     )
     parts.append("</div></html>")

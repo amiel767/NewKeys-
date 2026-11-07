@@ -1,7 +1,25 @@
 package com.aetherkeys.sheets.model
 
 object Theory {
-    val KEY_NAMES: List<String> = listOf("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
+
+    // Le choix d'enharmonie suit l'armure, pas la hauteur brute : un morceau en Bb
+    // s'ecrit avec des bemols, un morceau en A avec des dieses. Sans cela, la meme
+    // feuille affichait « A# » en Bb et « Ab » en A, deux noms pour la meme touche.
+    private val SHARP_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    private val FLAT_NAMES = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+    /**
+     * Tonalites dont l'armure s'ecrit avec des bemols : F, Bb, Eb, Ab, Db.
+     * L'index 6 (six demi-tons) est ambigu — F# majeur a 6 dieses, Gb majeur 6 bemols —
+     * on le laisse du cote dieses, qui est le nom affiche avant ce correctif.
+     */
+    private val FLAT_KEYS = setOf(5, 10, 3, 8, 1)
+
+    /**
+     * Noms des douze tonalites. Derive de [noteName] pour qu'il n'existe qu'UNE table
+     * dans le module : l'editeur, la liste et l'accordeur affichaient sinon des
+     * orthographes differentes pour la meme touche.
+     */
+    val KEY_NAMES: List<String> = (0 until 12).map { noteName(it, it) }
 
     // Nashville scale degrees in semitones (1..7)
     private val DEGREE_OFFSETS = intArrayOf(0, 0, 2, 4, 5, 7, 9, 11)
@@ -12,10 +30,15 @@ object Theory {
         return (keyPc + offset + 120) % 12
     }
 
+    /** Nom de note accorde a l'armure de [keyPc]. */
     fun noteName(pc: Int, keyPc: Int = 0): String {
         val idx = (pc % 12 + 12) % 12
-        return KEY_NAMES[idx]
+        val key = ((keyPc % 12) + 12) % 12
+        return if (key in FLAT_KEYS) FLAT_NAMES[idx] else SHARP_NAMES[idx]
     }
+
+    /** Une tonalite s'ecrit-elle avec des bemols ? (sert au choix d'enharmonie) */
+    fun usesFlats(keyPc: Int): Boolean = (((keyPc % 12) + 12) % 12) in FLAT_KEYS
 
     private fun rootToDegree(rootPc: Int, keyPc: Int): String {
         val interval = (rootPc - keyPc + 120) % 12

@@ -144,7 +144,7 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="only report existing assets")
     args = ap.parse_args()
 
-    names = [f"ae_row_{n}.webp" for n in ("organ", "synth", "leads", "piano", "sax")]
+    names = [f"ae_row_{n}.webp" for n in ("organ", "synth", "leads", "piano", "sax", "keyboards")]
     if args.check:
         for n in names:
             p = os.path.join(OUT, n)
@@ -163,6 +163,11 @@ def main() -> int:
     print("Piano (repo asset, mirrored):")
     strip(os.path.join(OUT, "ae_piano_mellow.webp"), "ae_row_piano.webp",
           cx=0.55, cy=0.45, wfrac=1.00, flip=True, target=118)
+    # Keyboards : la photo du DX (le modele que la carte met en avant) recadree
+    # comme les autres. Une seule image pour la section, pas une par clavier.
+    print("Keyboards (repo asset, DX):")
+    strip(os.path.join(OUT, "ae_piano_dx.webp"), "ae_row_keyboards.webp",
+          cx=0.50, cy=0.45, wfrac=1.00, target=112)
     return 0
 
 

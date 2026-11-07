@@ -42,7 +42,7 @@ internal fun Modifier.drag01(onPos: (Float, Float) -> Unit) = pointerInput(Unit)
 
 /** Polysynth: SOUND / MOTION / VOICE pages around the central sphere. Same layout as the validated preview. */
 @Composable
-fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
+fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim, onBend: (Float) -> Unit = {}) {
     val y: (Int) -> Float = { c.v(it) }
     Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF2A1A66), Color(0xFF0D0A24), Color(0xFF05040F)), center = androidx.compose.ui.geometry.Offset.Unspecified, radius = 900f)))
     Canvas(Modifier.at(375, 50, 250, 250)) { a.frame.intValue; drawOrb(a, y) }
@@ -52,6 +52,9 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
 
     when (c.s.page) {
         0 -> {
+            // Original layout. The band the on-screen keyboard used to fill is NOT bought by
+            // stretching these cards: they keep their size and two new elements go in the free
+            // space instead — a pitch bend strip on the left, a live spectrum on the right.
             Card(22, 54, 272, 286, "OSCILLATORS")
             Canvas(Modifier.at(36, 88, 240, 42)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
             Canvas(Modifier.at(36, 136, 240, 42)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
@@ -69,6 +72,15 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
                 else if (px < 0.55f) { c.set(13, (px - 0.28f) / 0.27f); c.set(14, 1f - py) }
                 else if (px > 0.7f) c.set(15, (px - 0.7f) / 0.3f)
             }) { a.frame.intValue; drawEnv(y) }
+
+            // The band the on-screen keyboard used to occupy, y 340..460. The free run is x
+            // 22..978 (nothing above it past x=978). Pitch bend takes the left, the spectrum the
+            // right, and the gap between them stays empty rather than being filled with a readout.
+            AeT("PERFORMANCE", 9, AeC.violet, Modifier.at(22, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold)
+            AeT("OUTPUT", 9, AeC.violet, Modifier.at(558, 344, 420, 12), spacing = 0.2f, weight = FontWeight.ExtraBold, align = TextAlign.End)
+            AePitchBend(22, 358, 40, 96, onBend)
+            Canvas(Modifier.at(80, 358, 470, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t, Color(0xFFE05CFF)) }
+            Canvas(Modifier.at(566, 358, 412, 96)) { a.frame.intValue; drawLevelTrace(c.s.level, a.t * 1.7f, Color(0xFF8A5CFF)) }
         }
         1 -> {
             Card(22, 54, 312, 286, "LFO 1")
@@ -94,5 +106,4 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
             AeGlassKnob(c, 30, "Tune", 700, 130, 50); AeGlassKnob(c, 31, "Level", 812, 130, 50)
         }
     }
-    AeKeyboard(c, 52, 360, 896, 90)
 }

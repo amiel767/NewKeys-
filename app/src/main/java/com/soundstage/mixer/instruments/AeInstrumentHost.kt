@@ -77,6 +77,17 @@ object AeBanks {
     /** Nombre de modeles de piano, pour l'assertion de coherence cote tests. */
     const val PIANO_MODEL_COUNT = 12
 
+    /**
+     * Index GLOBAL (dans `AePianoModels.all`) du modele joue par une section.
+     *
+     * Le moteur et les banques ne connaissent que l'index global : la carte
+     * Keyboards numerote ses quatre claviers 0..3, et cette fonction les ramene a
+     * 8..11.  Un preset de l'utilisateur y arrive par son parametre MODEL (15),
+     * relu plutot que deduit de sa position dans la liste.
+     */
+    fun modelIndex(instrument: AeInstrument, preset: Int, values: List<Float>): Int =
+        AeSections.modelIndex(instrument, preset, values)
+
     /** Le modele porte-t-il une de nos banques electriques ? */
     fun isElectricModel(model: Int): Boolean = electricModels.containsKey(model)
 
@@ -109,7 +120,9 @@ object AeBanks {
     fun fileFor(instrument: AeInstrument, saxType: Int, model: Int = -1): String? = when (instrument) {
         // L'alto (type 1) joue Bulldog ; soprano/tenor/baryton gardent MTG.
         AeInstrument.SAX -> if (saxType == 1) bulldogAltoFile else saxFiles[saxType.coerceIn(0, 3)]
-        AeInstrument.PIANO -> electricModels[model]
+        // Piano et Keyboards partagent le meme moteur et les memes banques : `model`
+        // est deja l'index GLOBAL (le manager le traduit via AeBanks.modelIndex).
+        AeInstrument.PIANO, AeInstrument.KEYBOARDS -> electricModels[model]
             ?: if (model in uprightModels) uprightFile
             else pianoFile
         else -> null
@@ -183,9 +196,9 @@ object AeInstrumentHost : AeHost {
 
     override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, model: Int): Boolean {
         // Sax and piano ship a bank. `type` is the sax's first parameter, the same value the
-        // engine reads to pick a formant set, so the two stay in step; the piano has a single
-        // bank and ignores it.
-        if (instrument != AeInstrument.SAX && instrument != AeInstrument.PIANO) return false
+        // engine reads to pick a formant set, so the two stay in step; the piano and the
+        // keyboards share one bank family and ignore it.
+        if (instrument != AeInstrument.SAX && !AeSections.isKeyboardLike(instrument)) return false
         val name = AeBanks.fileFor(instrument, type, model) ?: return false
         val bytes = AeBanks.read(name) ?: return false
         val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)

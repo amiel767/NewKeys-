@@ -54,15 +54,32 @@ async function helper(label) {
 }
 
 await shot("01_library");
+
+// grid -> list layout (the new header toggle)
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll("span")].find((e) => {
+    const r = e.getBoundingClientRect();
+    return Math.round(r.width) === 34 && Math.round(r.height) === 34 && e.querySelector("svg");
+  });
+  const all = [...document.querySelectorAll("span")].filter((e) => Math.round(e.getBoundingClientRect().width) === 34);
+  if (all[1]) all[1].click();
+});
+await new Promise((r) => setTimeout(r, 700));
+await shot("01b_list");
+// back to grid
+await page.evaluate(() => {
+  const all = [...document.querySelectorAll("span")].filter((e) => Math.round(e.getBoundingClientRect().width) === 34);
+  if (all[0]) all[0].click();
+});
+await new Promise((r) => setTimeout(r, 600));
+
 await helper("Float a sheet");
 await shot("02_floating_one");
 
+// tap the section strip (bottom-right) to open the in-card list
 await page.evaluate(() => {
-  const s = [...document.querySelectorAll("span")].find((e) => {
-    const r = e.getBoundingClientRect();
-    return Math.round(r.width) === 28 && Math.round(r.height) === 28;
-  });
-  if (s) s.click();
+  const el = document.querySelector('[data-strip="1"]');
+  if (el) el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 });
 await new Promise((r) => setTimeout(r, 600));
 await shot("03_picker_open");
@@ -76,6 +93,12 @@ await page.evaluate(() => {
   rows.forEach((r) => r.click());
 });
 await new Promise((r) => setTimeout(r, 700));
+// close the in-card list so the shot shows the multi-section chart itself
+await page.evaluate(() => {
+  const el = document.querySelector('[data-strip="1"]');
+  if (el) el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+});
+await new Promise((r) => setTimeout(r, 600));
 await shot("04_floating_many");
 
 await helper("Editor");

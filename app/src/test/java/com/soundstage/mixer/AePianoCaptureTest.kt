@@ -14,6 +14,7 @@ import com.soundstage.mixer.instruments.AeInstrument
 import com.soundstage.mixer.instruments.AeInstrumentWindow
 import com.soundstage.mixer.instruments.AeInstrumentsTabContent
 import com.soundstage.mixer.instruments.AeManager
+import com.soundstage.mixer.instruments.AePianoModels
 import com.soundstage.mixer.instruments.initAetherInstruments
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +49,13 @@ class AePianoCaptureTest {
             .getApplicationContext<android.content.Context>()
         initAetherInstruments(context)
         val manager = AeManager(PianoSilentHost(), CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
-        manager.load(0, AeInstrument.PIANO)
-        if (preset > 0) manager.loadPreset(0, preset)
+        // Les huit premiers modeles sont des pianos acoustiques, les quatre derniers des
+        // claviers electriques : depuis la separation des sections, ce sont deux cartes
+        // distinctes, donc deux instruments a charger pour les capturer.
+        val inst = if (preset >= AePianoModels.ELECTRIC_BASE) AeInstrument.KEYBOARDS else AeInstrument.PIANO
+        val local = if (inst == AeInstrument.KEYBOARDS) preset - AePianoModels.ELECTRIC_BASE else preset
+        manager.load(0, inst)
+        if (local > 0) manager.loadPreset(0, local)
         // `edit` moves one knob off the preset so the save button appears: without a real
         // divergence the capture would show the header the user sees at rest, which is
         // exactly the case the button has to stay out of.

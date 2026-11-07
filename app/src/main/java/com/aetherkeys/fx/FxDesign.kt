@@ -126,6 +126,13 @@ object FxDesign {
     private val STAGE = Color(0xFF141414)
 
     /**
+     * Le master n'a pas de case MIDI : il ne porte que de l'audio, donc QUATRE
+     * emplacements et pas trois. Il n'a pas de canal MIDI à intercepter, un
+     * arpégiateur n'y aurait rien à faire.
+     */
+    const val MAX_MASTER = 4
+
+    /**
      * Un littéral `#RRGGBB` lu SANS passer par `android.graphics`. Le catalogue
      * est ainsi une pure donnée Kotlin : il se teste sur la JVM, sans Robolectric,
      * et un test unitaire peut l'interroger sans monter d'Android.

@@ -50,12 +50,22 @@ models = re.findall(
     r'AePianoModel\("(\w+)",\s*"([^"]+)",\s*"[^"]*",\s*\w+,\s*col\(0x[0-9A-Fa-f]+\),\s*.*?AePType\.\w+,\s*floatArrayOf\(([^)]*)\),\s*(\d+)\)',
     ptext)
 assert models, "aucun modele piano trouve"
-lines.append("// Piano : valeurs = d + idx/8 + (0.30 + 0.55 * d[0])  (AePianoModel.values)")
+lines.append("// Piano : mirror EXACT de AePianoModel.values (20 parametres).")
 lines.append("static const DemoPreset k_piano[] = {")
 for mid, name, vals, idx in models:
     d = [float(x.strip().rstrip("f")) for x in vals.split(",") if x.strip()]
     i = int(idx)
-    v = d + [i / 8.0, 0.30 + 0.55 * d[0]]
+    v = [0.0] * 20
+    for j in range(15):
+        v[j] = d[j]
+    v[10] = 0.20 + 0.30 * d[0]   # DAMPER
+    v[12] = 0.15 + 0.40 * d[0]   # KEY
+    v[13] = 0.0                  # libre
+    v[15] = i / 8.0              # MODEL
+    v[16] = 0.25 + 0.60 * d[0]   # HAMMER N
+    v[17] = d[15]                # EQ MID
+    v[18] = d[16]                # EQ FREQ
+    v[19] = d[17]                # EQ HIGH
     vv = ", ".join(lit(x) for x in v)
     lines.append(f'    {{"{name}", "{mid}", {len(v)}, {{{vv}}}}},')
 lines.append("};")

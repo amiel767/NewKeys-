@@ -127,7 +127,11 @@ internal object SheetJson {
         })
         put("setlists", JSONArray().also { a ->
             l.setlists.forEach { sl ->
-                a.put(JSONObject().apply { put("id", sl.id); put("name", sl.name); put("sheets", JSONArray(sl.sheetIds)) })
+                a.put(JSONObject().apply {
+                    put("id", sl.id); put("name", sl.name); put("sheets", JSONArray(sl.sheetIds))
+                    putOpt("color", sl.colorArgb)
+                    put("created", sl.createdAt); put("updated", sl.updatedAt)
+                })
             }
         })
     }.toString()
@@ -146,7 +150,14 @@ internal object SheetJson {
             swipeReversed = s.optBoolean("swipeReversed", false),
         )
         val lists = o.optJSONArray("setlists").mapObjects {
-            Setlist(it.getString("id"), it.optString("name", "Setlist"), it.optJSONArray("sheets").strings())
+            Setlist(
+                id = it.getString("id"),
+                name = it.optString("name", "Set"),
+                sheetIds = it.optJSONArray("sheets").strings(),
+                colorArgb = it.longOrNull("color"),
+                createdAt = it.optLong("created", System.currentTimeMillis()),
+                updatedAt = it.optLong("updated", System.currentTimeMillis()),
+            )
         }
         return LibraryData(settings, lists)
     }

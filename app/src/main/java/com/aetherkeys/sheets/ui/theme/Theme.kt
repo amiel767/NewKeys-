@@ -104,6 +104,8 @@ object SheetsLayout {
     const val RibbonWeight = 0.40f
     const val PageWeight = 0.60f
     val FloatingWidth = 372.dp
+    val FloatingMinWidth = 260.dp
+    val FloatingMaxWidth = 620.dp
     val SectionTagWidth = 54.dp
     const val ChordMinSizeSp = 18f
     const val ChordMaxSizeSp = 56f
@@ -162,6 +164,13 @@ object SheetsType {
     val Caption = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Medium, fontSize = 11.sp)
     val Overline = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp)
     val SectionTag = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+
+    /** Titre de carte de bibliotheque : la police de l'app, pas la police manuscrite. */
+    val CardTitle = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = (-0.2).sp)
+    /** Metadonnees de carte (tonalite, BPM, sections) : compactes et nettes. */
+    val CardMeta = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+    /** Titre d'une ligne de bibliotheque : plus grand que la carte, la ligne a la place. */
+    val RowTitle = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = (-0.1).sp)
 
     /** Notes : police de la partition (défaut Architects Daughter). */
     fun chord(family: FontFamily = SheetsFonts.ArchitectsDaughter, sizeSp: Float = 32f) =

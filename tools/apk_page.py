@@ -138,6 +138,8 @@ def main() -> int:
 
   <a class="dl" href="/aether.apk" download>Telecharger l'APK ({human(size)})</a>
 
+  <a class="dl" href="/demos/" style="margin-top:9px;background:linear-gradient(180deg,#243040,#161d26);border-color:#3b4a5e;color:#9fc0e8">Ecouter les demos : Isn't She Lovely</a>
+
   <div class="meta">
     <span class="tag">arm64-v8a</span><span class="tag">debug</span><span class="tag">{human(size)}</span><br>
     build : {when}<br>

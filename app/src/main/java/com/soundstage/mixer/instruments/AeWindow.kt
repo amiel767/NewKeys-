@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.soundstage.mixer.audio.NativeAudioBridge
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -74,6 +75,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
+/** Instruments whose window shows the loaded preset name in the header, in place of the PRESETS label. */
+private val NAME_IN_HEADER = setOf(AeInstrument.LEADS, AeInstrument.SYNTH, AeInstrument.ORGAN)
+
 /**
  * The instrument window. Fill the soundfont window's bounds (or a dialog) with it; the stage letterboxes itself.
  * Recommended size: ratio 1000:460 (≈ 2.17, the phone's own ratio), about 97 % of the screen width.
@@ -91,8 +95,8 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     // piano that backdrop is a photograph, so a fixed near-white ink turns white-on-white
     // on the six light models. Measure the same band the title lives in and follow it.
     val winLuma = remember(s.instrument, s.preset) {
-        if (s.instrument != AeInstrument.PIANO) null
-        else AePianoModels.all.getOrNull(s.preset)?.let { AePianoAssets.plate(ctx, it.id)?.topLuma }
+        if (!AeSections.isKeyboardLike(s.instrument)) null
+        else AePianoModels.all.getOrNull(AeSections.modelIndex(s.instrument, s.preset, s.values))?.let { AePianoAssets.plate(ctx, it.id)?.topLuma }
     }
     val winTh = rememberAeThemeFromLuma(winLuma, AeC.p1)
     // One loop per open window. While anything is moving it runs at ~60 fps, and when the
@@ -120,8 +124,17 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip) { list = true } }
+            // Pitch bend goes to the engine on this strip's own channel, so the strip bends the
+            // instrument it belongs to rather than whatever the mixer last selected.
+            val onBend: (Float) -> Unit = remember(strip) {
+                { b -> NativeAudioBridge.safePitchBend(strip, ((b.coerceIn(-1f, 1f) + 1f) * 8191.5f).toInt()) }
+            }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a, onBend); AeInstrument.LEADS -> AeLeadsUi(c, a, onBend); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
+            // Instrument title. It was removed once ("the pill already identifies the window"),
+            // but the user wants it back: it is the name of the instrument, and the pill is the
+            // name of the preset. Two different things, so both belong here.
             when (s.instrument) {
+                AeInstrument.ORGAN -> AeT("ÆTHER ORGAN", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> {
@@ -137,16 +150,29 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // while every instrument already has a full preset list, and on the piano they sat
             // over the model name. A preset is now chosen from the list, never by a pair of arrows.
             //
-            // The preset name is not shown here at all (user: "le nom du preset uniquement sur
-            // l'affichage" — the mixer strip's name plate). The header chip that used to carry it
-            // is gone for every instrument; only the browser opener is kept, because it is the
-            // only way to reach the preset list on the instruments that have no always-on list.
+            // The preset name is not shown as a separate header chip (user: "le nom du preset
+            // uniquement sur l'affichage" — the mixer strip's name plate). What sits here is the
+            // preset browser opener, because it is the only way to reach the preset list on the
+            // instruments that have no always-on list; on Leads, Synth and Organ it carries the
+            // loaded preset's name as its label.
             val ns = RoundedCornerShape(10.su())
-            if (s.instrument != AeInstrument.PIANO && s.instrument != AeInstrument.SAX) {
+            // LEADS, SYNTH and ORGAN carry no name plate of their own, so the preset browser shows
+            // the loaded preset instead of the word PRESETS. The preset list is where a sound is
+            // chosen, and without this the window never says which one is playing. PIANO/KEYBOARDS
+            // keep their model strip and SAX keeps its factory-name plate inside AeSaxUi, so neither
+            // gets a second readout. Geometry is unchanged, so the Save pill that appears left of it
+            // when a knob has moved cannot collide.
+            val nameHere = s.instrument in NAME_IN_HEADER
+            if (!AeSections.isKeyboardLike(s.instrument) && s.instrument != AeInstrument.SAX) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {
-                    AeT("PRESETS", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
+                    // Read the manager this window was given. AeInstruments.presetNameOn reads the
+                    // app-wide singleton, which is a different instance from the one the window
+                    // renders — that mismatch is why the pill could fall back to the instrument
+                    // title instead of showing the loaded preset.
+                    val label = if (nameHere) manager.presetNameOn(strip) ?: s.instrument.title else "PRESETS"
+                    AeT(label, 12, winTh.ink, Modifier.padding(horizontal = 12.su()), ellipsis = nameHere)
                 }
             }
             // Shown only once a knob has been moved away from the selected preset. The piano's
@@ -159,7 +185,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
-                onConfirm = { manager.saveUserPreset(strip, it); naming = false },
+                onConfirm = { name, slot -> manager.saveUserPreset(strip, name, slot); naming = false },
             )
             if (list) PresetList(
                 m = manager, strip = strip, s = s,
@@ -344,6 +370,17 @@ private fun BoxScope.PresetList(
                     AeT("${n + 1}", 9, if (sel) pal.chipOn1 else AeC.mute, Modifier.padding(start = 8.su(), end = 2.su()).width(20.su()), font = AeFonts.mono, align = TextAlign.End)
                     AeT(p.name, 11, if (sel) Color.White else AeC.tx, Modifier.padding(start = 8.su()).weight(1f))
                     if (cat == null) AeT(p.category, 9, AeC.mute, Modifier.padding(end = 6.su()), spacing = 0.04f)
+                    // Memoire A/B du preset, sur les presets de l'utilisateur seulement :
+                    // les presets d'usine n'ont pas de memoire a eux.  Un appui bascule
+                    // l'autre case et le choix est ecrit tout de suite.
+                    if (i >= base) Box(
+                        Modifier.padding(end = 4.su()).size(20.su()).clip(RoundedCornerShape(5.su()))
+                            .background(if (p.slot == AePreset.SLOT_B) Color(0x334E8FE4) else Color(0x1AFFFFFF))
+                            .clickable(remember { MutableInteractionSource() }, null) {
+                                m.setSlot(strip, i, if (p.slot == AePreset.SLOT_B) AePreset.SLOT_A else AePreset.SLOT_B)
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) { AeT(p.slot, 9, if (p.slot == AePreset.SLOT_B) Color(0xFF9CC4F5) else AeC.mute, font = AeFonts.mono) }
                     if (i >= base) Box(
                         Modifier.padding(end = 6.su()).size(16.su()).clip(CircleShape).background(Color(0x1AFF5C7A))
                             .clickable(remember { MutableInteractionSource() }, null) { onDeleteUser(i) },
@@ -421,8 +458,9 @@ private fun BoxScope.SaveButton(th: AeTheme, x: Number, y: Number, onClick: () -
  *    as the rest of the controls instead of being a flat blue block.
  */
 @Composable
-private fun NameSheet(initial: String, onCancel: () -> Unit, onConfirm: (String) -> Unit) {
+private fun NameSheet(initial: String, onCancel: () -> Unit, onConfirm: (String, String) -> Unit) {
     var text by remember { mutableStateOf(initial) }
+    var slot by remember { mutableStateOf(AePreset.SLOT_A) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     // Focus the field as soon as the sheet opens, so the keyboard is already up and the user
@@ -495,9 +533,27 @@ private fun NameSheet(initial: String, onCancel: () -> Unit, onConfirm: (String)
                     textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 14.sp, fontFamily = AeFonts.ui),
                     cursorBrush = SolidColor(Color(0xFF8FB2E8)),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { if (text.isNotBlank()) onConfirm(text) }),
+                    keyboardActions = KeyboardActions(onDone = { if (text.isNotBlank()) onConfirm(text, slot) }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
+            }
+            // Memoire A ou B : le preset s'en souvient (champ "s" de son enregistrement),
+            // donc le rangement survit a la fermeture de l'app.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(AePreset.SLOT_A, AePreset.SLOT_B).forEach { sl ->
+                    val on = slot == sl
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (on) Brush.verticalGradient(listOf(Color(0xFF4E8FE4), Color(0xFF2F63B4)))
+                                else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))),
+                            )
+                            .then(if (on) Modifier.border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(10.dp)) else Modifier)
+                            .clickable(remember { MutableInteractionSource() }, null) { slot = sl }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(sl, color = if (on) Color.White else Color(0xFF8D96AB), fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui) }
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
@@ -517,7 +573,7 @@ private fun NameSheet(initial: String, onCancel: () -> Unit, onConfirm: (String)
                             drawContent()
                             if (armed) drawLine(Color(0x4DFFFFFF), Offset(2f, 0f), Offset(size.width - 2f, 0f), 1.2f)
                         }
-                        .clickable(enabled = armed) { onConfirm(text) }.padding(vertical = 11.dp),
+                        .clickable(enabled = armed) { onConfirm(text, slot) }.padding(vertical = 11.dp),
                     contentAlignment = Alignment.Center,
                 ) { Text("Save", color = if (armed) Color.White else Color(0x88FFFFFF), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui) }
             }
@@ -606,6 +662,7 @@ private object AeRowArt {
             AeInstrument.SYNTH -> AeSvgCache.get(AeSvgs.MINI_SYNTH, ArtW, ArtH)
             AeInstrument.LEADS -> AeSvgCache.get(AeSvgs.MINI_LEADS, ArtW, ArtH)
             AeInstrument.PIANO -> AePianoAssets.plate(ctx, "mellow")?.bitmap
+            AeInstrument.KEYBOARDS -> AePianoAssets.plate(ctx, "dx")?.bitmap
             AeInstrument.SAX -> AeSaxBitmaps.get(ctx, 1, 0)
         }
     }
@@ -864,6 +921,11 @@ private fun rowStyleOf(inst: AeInstrument) = when (inst) {
     AeInstrument.PIANO -> AeRowStyle(
         Color(0xFF9FB0C8), "Felt · Studio · Cottage · Tine",
         Color(0xFF232A36), Color(0xFF151A24),
+    )
+    // Ambre-bleu : l'electrique, une famille a part des acoustiques.
+    AeInstrument.KEYBOARDS -> AeRowStyle(
+        Color(0xFF7BD8A0), "Tine · Ballad · DX Bell · E.Piano",
+        Color(0xFF16281F), Color(0xFF101A15),
     )
 }
 

@@ -124,11 +124,19 @@ bool AudioEngine::openAndStartStream() {
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
-    // Size the Æther FX scratch on the control thread before the stream runs. The
-    // capacity is the max Oboe burst the stream can hand us; FxMixer gets the same
-    // number so its internal blocks are never reallocated mid-callback.
+    // Pre-size every scratch the callback writes into, on the control thread.  Oboe
+    // may hand us a block larger than the buffer we asked for, so the capacity is
+    // the worst case (4 bursts, or the request, or 2048) and the callback never
+    // resizes.  The old code resized mFloatRenderBuffer / mPadsIsolateBuffer inside
+    // the callback, which allocates and can block on the allocator lock: that is a
+    // textbook audio-thread violation and one of the stutter sources.
+    const size_t scratchCapacity = static_cast<size_t>(std::max({burst * 4, reqBuffer, targetBuffer, 2048}));
+    mFloatRenderBuffer.assign(scratchCapacity * 2, 0.0f);
+    mPadsIsolateBuffer.assign(scratchCapacity * 2, 0.0f);
+    mTonicRenderBuffer.assign(scratchCapacity * 2, 0.0f);
+    mSurfaceFxBuffer.assign(scratchCapacity * 2, 0.0f);
     {
-        int capacity = std::max({burst * 4, reqBuffer, targetBuffer, 2048});
+        int capacity = static_cast<int>(scratchCapacity);
         mFxChannelBuffer.assign(static_cast<size_t>(capacity) * 2 * 16, 0.0f);
         mFxStripBuffer.assign(static_cast<size_t>(capacity) * 2, 0.0f);
         mFxMixBuffer.assign(static_cast<size_t>(capacity) * 2, 0.0f);
@@ -390,7 +398,8 @@ void AudioEngine::applySurfaceFx(float *mixedBuf, const float *preDrumBuf, float
         g_padsFx.delayOn.load(std::memory_order_relaxed) ||
         g_padsFx.reverbOn.load(std::memory_order_relaxed);
     if (padsFxOn) {
-        if (mSurfaceFxBuffer.size() < totalSamples) mSurfaceFxBuffer.resize(totalSamples, 0.0f);
+        // mSurfaceFxBuffer is pre-sized in openAndStartStream(); the caller has
+        // already dropped the block if totalSamples exceeded it, so no resize here.
         if (padsAudible && drumBuf != nullptr) {
             std::copy(drumBuf, drumBuf + totalSamples, mSurfaceFxBuffer.data());
             processSurfaceFx(mSurfaceFxBuffer.data(), numFrames, g_padsFx,
@@ -735,16 +744,50 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     }
 
     auto startTime = std::chrono::high_resolution_clock::now();
+    // Publish the render time on every exit path, including the Æther FX path's
+    // early return.  LOGI() is not called here: it writes to the log daemon and can
+    // block, and the old >3500 us branch fired exactly when the audio thread was
+    // already late.  The control thread reads lastRenderMicros() and logs from there.
+    auto publishRenderTime = [&]() {
+        auto endTime = std::chrono::high_resolution_clock::now();
+        mLastRenderUs.store(
+            std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count(),
+            std::memory_order_relaxed);
+    };
 
     mOboeActive.store(true, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(mRenderMutex);
+    // Lock must NEVER block here.  resetMasterBus() used to hold this same mutex
+    // across its clear() walk, and a control-thread panic stalled the callback for
+    // the whole walk.  try_lock: if the control thread holds it (only during a
+    // stream reconfigure), we output the previous block's tail rather than wait.
+    std::unique_lock<std::mutex> lock(mRenderMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        // Silence one block.  The fill must follow the stream format: an int16_t
+        // fill on a float buffer would zero only half of it and leave the rest as
+        // stale audio, which is worse than the stall it is avoiding.
+        if (audioStream->getFormat() == oboe::AudioFormat::I16) {
+            auto *out16 = static_cast<int16_t *>(audioData);
+            std::fill(out16, out16 + static_cast<size_t>(numFrames) * 2, static_cast<int16_t>(0));
+        } else {
+            auto *outF = static_cast<float *>(audioData);
+            std::fill(outF, outF + static_cast<size_t>(numFrames) * 2, 0.0f);
+        }
+        return oboe::DataCallbackResult::Continue;
+    }
+    if (mMasterResetRequested.exchange(false, std::memory_order_acq_rel)) applyMasterReset();
 
     oboe::AudioFormat format = audioStream->getFormat();
     if (format == oboe::AudioFormat::I16) {
         auto *outputBuffer16 = static_cast<int16_t *>(audioData);
         size_t totalSamples = static_cast<size_t>(numFrames * 2);
-        if (mFloatRenderBuffer.size() < totalSamples) {
-            mFloatRenderBuffer.resize(totalSamples, 0.0f);
+        // The scratch is sized for the stream's worst-case burst at open() time; a
+        // resize() here would allocate on the audio thread and was one of the
+        // stutter sources.  If the request ever exceeds any of them, drop the block
+        // instead of resizing.
+        if (totalSamples > mFloatRenderBuffer.size() || totalSamples > mPadsIsolateBuffer.size() ||
+            totalSamples > mSurfaceFxBuffer.size()) {
+            std::fill(outputBuffer16, outputBuffer16 + totalSamples, static_cast<int16_t>(0));
+            return oboe::DataCallbackResult::Continue;
         }
         float *floatBuf = mFloatRenderBuffer.data();
 
@@ -753,6 +796,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 float s = std::clamp(floatBuf[i], -1.0f, 1.0f);
                 outputBuffer16[i] = static_cast<int16_t>(s * 32767.0f);
             }
+            publishRenderTime();
             return oboe::DataCallbackResult::Continue;
         }
 
@@ -762,7 +806,6 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
         // Always render the sampler so queued triggers are drained this block; the
         // voice count is only known after rendering.
-        if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
         mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
         bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
         if (padsAudible) {
@@ -809,8 +852,15 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     } else {
         auto *outputBuffer = static_cast<float *>(audioData);
         size_t totalSamples = static_cast<size_t>(numFrames * 2);
+        // Same guard as the I16 branch: the pads/surface scratch is sized for the
+        // stream's worst-case burst at open() and is never resized on this thread.
+        if (totalSamples > mPadsIsolateBuffer.size() || totalSamples > mSurfaceFxBuffer.size()) {
+            std::fill(outputBuffer, outputBuffer + totalSamples, 0.0f);
+            return oboe::DataCallbackResult::Continue;
+        }
 
         if (renderFxPath(outputBuffer, numFrames)) {
+            publishRenderTime();
             return oboe::DataCallbackResult::Continue;
         }
 
@@ -820,7 +870,6 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
         // Always render the sampler so queued triggers are drained this block; the
         // voice count is only known after rendering.
-        if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
         mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
         bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
         if (padsAudible) {
@@ -859,16 +908,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         }
     }
 
-    auto endTime = std::chrono::high_resolution_clock::now();
-    auto durationUs = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
-
-    static int sLogCounter = 0;
-    if (++sLogCounter % 500 == 0 || durationUs > 3500) {
-        int totalActiveVoices = mSynthEngine.getActiveVoiceCount();
-        int sr = mSampleRate > 0 ? mSampleRate : 48000;
-        LOGI("AudioCallback render duration: %ld us (budget: %d us, active voices: %d, frames: %d)",
-             (long)durationUs, (numFrames * 1000000 / sr), totalActiveVoices, numFrames);
-    }
+    publishRenderTime();
 
     return oboe::DataCallbackResult::Continue;
 }

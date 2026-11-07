@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -37,6 +38,11 @@ import kotlin.math.max
  *
  * - [glow]  = 0..1 : intensité LED de la partie colorée (0 = éteint, 1 = pleine lueur).
  *             À piloter par l'activité audio du canal (voir les instructions d'intégration).
+ * - [body]  = couleur du châssis. Nul = le gris du mixeur. Une teinte sombre donne un rail noir
+ *             (tirettes d'orgue) : le dégradé du châssis est alors reconstruit sur cette teinte, et
+ *             le liseré clair reste, sinon le rail noir ne se détacherait plus du fond.
+ *
+ * L'ÉPAISSEUR du rail est sa largeur de Modifier : c'est elle qui règle tout le reste.
  *
  * Valeurs mesurées sur le design de référence (86 x 1183 unités), voir [RailSpec].
  * Usage : FaderRail(accent = Color(0xFF8B5CF6), modifier = Modifier.width(14.dp).fillMaxHeight())
@@ -47,10 +53,11 @@ fun FaderRail(
     modifier: Modifier = Modifier,
     level: Float? = null,
     glow: Float = 0f,
+    body: Color? = null,
 ) {
     Canvas(modifier = modifier) {
         if (size.width <= 0f || size.height <= 0f) return@Canvas
-        drawBody()
+        drawBody(body)
         drawGroove(accent, level?.coerceIn(0f, 1f), glow.coerceIn(0f, 1f))
     }
 }
@@ -122,6 +129,8 @@ private object RailSpec {
     )
 }
 
+private fun luminance(c: Color) = 0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue
+
 private fun bodyPath(l: Float, t: Float, r: Float, b: Float, rTop: Float, rBottom: Float): Path {
     val h = b - t
     val k = if (rTop + rBottom > h) h / (rTop + rBottom) else 1f
@@ -140,15 +149,21 @@ private fun bodyPath(l: Float, t: Float, r: Float, b: Float, rTop: Float, rBotto
     }
 }
 
-private fun DrawScope.drawBody() {
+private fun DrawScope.drawBody(body: Color? = null) {
     val w = size.width
     val h = size.height
     val s = w / RailSpec.REF_W
     val rTop = RailSpec.BODY_R_TOP * s
     val rBottom = RailSpec.BODY_R_BOTTOM * s
 
+    // Une teinte fournie remplace le gris mesuré : chaque stop garde sa luminance relative, donc
+    // la forme du dégradé (haut plus sombre, bas plus clair) survit au changement de couleur.
+    val stops = if (body == null) RailSpec.bodyStops else RailSpec.bodyStops.map { (t, c) ->
+        t to lerp(body, Color.White, luminance(c) * 0.30f)
+    }.toTypedArray()
+
     val shape = bodyPath(0f, 0f, w, h, rTop, rBottom)
-    drawPath(shape, Brush.verticalGradient(*RailSpec.bodyStops, startY = 0f, endY = h))
+    drawPath(shape, Brush.verticalGradient(*stops, startY = 0f, endY = h))
     drawPath(shape, Brush.horizontalGradient(*RailSpec.bodySideStops, startX = 0f, endX = w))
 
     val rim = max(RailSpec.BODY_RIM * s, RailSpec.BODY_RIM_MIN_PX)

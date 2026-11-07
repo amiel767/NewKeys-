@@ -55,6 +55,10 @@ class PianoSampleReader {
     int layer = 0;                    // 0 = PP .. 4 = FF (5 couches dans la banque)
     uint32_t offset = 0, frames = 0, loopStart = 0, loopEnd = 0;
     float tuneCents = 0.f;
+    // Periode REELLE de la boucle, mesuree au chargement (`repairLoops`).  Sert au
+    // fondu du raccord : fondre sur la periode NOMINALE (178,6 ech a C4) alors que
+    // la corde inharmonique boucle sur 168-179 laisse une marche a chaque tour.
+    float period = 0.f;
   };
 
   static constexpr int kStep[89] = {
@@ -102,10 +106,10 @@ class PianoSampleReader {
     std::sort(layers_.begin(), layers_.end());
     layerCount_ = static_cast<int>(layers_.size());
     pcm_.assign(bytes + 28 + recLen, bytes + 28 + recLen + pcmLen);
-    // Les couches d'une meme racine doivent boucler sur la MEME longueur, sinon
-    // leur somme bat (creux periodiques = « dain dain »).  Avant `preload()`,
-    // qui aplatit le niveau de boucle sur la longueur retenue.
-    harmonizeLoops();
+    // Boucles d'abord : nombre entier de periodes, identique pour toutes les
+    // couches d'une racine.  Sinon le raccord saute et la somme des couches bat
+    // (« dain dain »).  Avant `preload()`, qui applique `flattenLoop`.
+    repairLoops();
     // Hors du thread audio : `load()` tourne sur le thread UI.  Voir preload().
     preload();
     return !regions_.empty();
@@ -236,6 +240,7 @@ class PianoSampleReader {
     }
     auto out = std::make_shared<std::vector<int16_t>>(static_cast<size_t>(g->frames) * 2);
     decodeRegion(*g, out->data());
+    treatRegion(out->data(), *g);
     if (cache_.size() >= kCacheSlots) cache_.erase(cache_.begin());
     cache_.emplace_back(key, out);
     return out;
@@ -263,39 +268,186 @@ class PianoSampleReader {
   static constexpr size_t kPreloadBudgetSamples = 24u * 1024u * 1024u;  // 48 Mo int16
 
   /**
-   * Aligne la LONGUEUR de boucle des couches d'une meme racine.
+   * Met les boucles en etat de se reboucler SANS que ca s'entende.
    *
-   * Les deux couches d'un fondu sont deux prises de la MEME note, mais le pack
-   * leur a donne des boucles d'un nombre de periodes different (mesure `piano.bin`
-   * racine 59 : L6 = 89 periodes, L7 = 173).  Le lecteur reboucle chaque couche
-   * sur SA longueur : deux rythmes de boucle differents, donc leur SOMME bat —
-   * creux periodiques mesures jusqu'a 9,5 dB dans la queue (« Nain-Nain-Nain »),
-   * et c'est maximal a velocite moyenne, la ou le fondu est a 50/50.
+   * Deux defauts distincts, tous deux mesures sur `piano.bin` :
    *
-   * Toutes les couches d'une racine partagent le meme `root`, donc le meme facteur
-   * de reechantillonnage : l'invariant est le nombre de FRAMES.  On ramene tout le
-   * groupe a la longueur la PLUS COURTE, deja un nombre entier de periodes (mesure :
-   * 28,0 et 27,95 ; 89,1 et 173,3) — raccourcir ne peut donc pas casser la continuite
-   * du raccord, et la cible tient toujours dans l'echantillon.  Mesure hors-ligne de
-   * la somme brute : 8 a 17 dB d'ondulation ramenes a ~2 dB.
-   * Fait AVANT `preload()`, donc avant `flattenLoop`, qui aplatit le niveau de la
-   * boucle sur la longueur retenue.
+   * 1. Les couches d'une MEME racine bouclaient sur des nombres de periodes
+   *    differents (mesure : L6 = 89,1 periodes, L7 = 173,3, L2-L4 = 222).  Le
+   *    lecteur reboucle chaque couche sur SA longueur, donc au fondu les deux
+   *    rythmes se melangent et leur somme BAT.  Mesure au banc
+   *    (`tools/aetherfx/hold_residual.cpp`, note 60) : residu d'enveloppe de la
+   *    tenue 36,9 % a velocite 100, la ou le fondu est a 50/50, contre 10,0 % avec
+   *    une seule couche.  La periode du battement vaut exactement la longueur de
+   *    boucle (0,34 s), ce qui identifie la cause sans ambiguite.
+   *
+   * 2. La longueur de boucle n'etait pas un nombre ENTIER de periodes.  Le fondu du
+   *    raccord ne retombe alors pas sur la meme phase : a chaque tour la forme
+   *    d'onde saute.  Mesure (`tools/pianopack/loop_health.py`) : 89 boucles sur
+   *    160 ne sont pas entieres, jusqu'a 0,33 periode d'erreur.
+   *
+   * Correction : on MESURE la periode reelle de chaque boucle (autocorrelation sur
+   * le PCM decode — une corde inharmonique donne 168-179 echantillons la ou la
+   * periode nominale vaut 178,6), on prend le plus petit nombre entier de periodes
+   * du groupe, et on y ramene TOUTES les couches de la racine.  Fait AVANT
+   * `preload()`, qui applique `flattenLoop` sur la longueur corrigee.
    */
-  void harmonizeLoops() {
+  void repairLoops() {
+#ifdef PIANO_NO_REPAIR
+    return;   // banc : boucles telles que livrees par le pack
+#endif
     const int n = static_cast<int>(regions_.size());
+    if (n == 0) return;
+    // 1. Periode REELLE de chaque boucle.  On ne peut pas la deduire de la hauteur
+    //    nominale : la corde d'un piano est inharmonique, donc sa periode mesuree
+    //    vaut 168 a 179 echantillons pour une periode theorique de 178,6.  On
+    //    mesure par autocorrelation sur le PCM DECODE.
+    std::vector<float> period(n, 0.f);
+    // 1. Longueur de boucle COMMUNE a chaque racine.  Elle se lit dans les
+    //    en-tetes : inutile de decoder pour la connaitre.
+    std::vector<int> groupOf(n, -1);
+    std::vector<int> groups;
+    std::vector<uint32_t> common;
     for (int i = 0; i < n; ++i) {
-      Region& gi = regions_[i];
-      if (gi.loopEnd <= gi.loopStart) continue;
-      uint32_t best = 0;
-      for (int j = 0; j < n; ++j) {
-        const Region& gj = regions_[j];
-        if (gj.root != gi.root || gj.loopEnd <= gj.loopStart) continue;
-        const uint32_t L = gj.loopEnd - gj.loopStart;
-        if (best == 0 || L < best) best = L;
-      }
-      if (best > 0 && gi.loopEnd - gi.loopStart > best)
-        gi.loopEnd = gi.loopStart + best;
+      const Region& g = regions_[i];
+      if (g.loopEnd <= g.loopStart || g.loopEnd > g.frames) continue;
+      int k = -1;
+      for (int j = 0; j < static_cast<int>(groups.size()); ++j)
+        if (regions_[groups[j]].root == g.root) { k = j; break; }
+      if (k < 0) { groups.push_back(i); common.push_back(0); k = static_cast<int>(groups.size()) - 1; }
+      groupOf[i] = k;
+      const uint32_t L = g.loopEnd - g.loopStart;
+      if (common[k] == 0 || L < common[k]) common[k] = L;
     }
+    // 2. Un seul decodage par region : la periode mesuree sert au fondu, et la
+    //    correlation au point de raccord.  Le chargement de la banque est sur le
+    //    thread UI, donc on ne decode pas deux fois.
+    std::vector<int16_t> scratch;
+    for (int i = 0; i < n; ++i) {
+      if (groupOf[i] < 0) continue;
+      Region& g = regions_[i];
+      scratch.assign(static_cast<size_t>(g.frames) * 2, 0);
+      decodeRegion(g, scratch.data());
+      period[i] = measurePeriod(scratch.data(), g);
+      if (period[i] <= 1.f) {
+        const float f0 = 440.f * std::pow(2.f, (g.root - 69) / 12.f);
+        period[i] = static_cast<float>(rate_) / std::max(20.f, f0);
+      }
+      g.period = period[i];
+      // Longueur de reference : celle du groupe, sauf si les couches sont deja
+      // proches (moins de 5 % d'ecart), auquel cas forcer la plus courte
+      // raccourcirait inutilement les autres et rapprocherait leurs repetitions.
+      const uint32_t own = g.loopEnd - g.loopStart;
+      const uint32_t c = common[groupOf[i]];
+      const uint32_t ref = (c > 0 && own > c + c / 20) ? c : 0u;
+      refineLoopPoint(g, scratch.data(), period[i], ref);
+    }
+  }
+    // 2. On corrige le POINT de bouclage de chaque region par CORRELATION, et non
+    //    en recalculant `nper * periode`.
+    //
+    //    Recalculer la longueur depuis la periode mesuree amplifie l'erreur de
+    //    mesure par le nombre de periodes : une boucle de 222 periodes avec 1
+    //    echantillon d'erreur sur la periode se decale de 222 echantillons, soit
+    //    1,2 periode — le raccord est alors PIRE qu'avant (mesure : modulation
+    //    37 % contre 25 %).  C'est l'erreur qui a fait echouer les tentatives
+    //    precedentes.
+    //
+    //    La bonne methode est celle des editeurs d'echantillons : chercher, au
+    //    voisinage de la fin de boucle d'origine, la position ou le signal
+    //    RESSEMBLE le plus au debut de boucle.  On balaie donc +-une demi-periode
+    //    autour de la longueur d'origine et on garde le maximum de correlation
+    //    normalisee sur une fenetre.  Aucune accumulation d'erreur : la longueur
+    //    trouvee est celle que le signal lui-meme indique.
+    // Les couches d'une MEME racine partagent en plus une longueur de boucle
+    // COMMUNE, exprimee en echantillons de la source.  Le moteur lit deux couches
+    // au fondu avec le MEME ratio (mesure : tuneCents identiques), donc deux
+    // longueurs differentes font reboucler les deux couches a des instants
+    // differents : leur somme bat.  C'est ce battement qui reste apres la
+    // correction du point de raccord — mesure note 60 : 8 remontees d'enveloppe
+    // avec le fondu a deux couches, ZERO en couche unique.
+  /** Deplace `loopEnd` sur la position ou la forme d'onde se raccorde le mieux.
+   *
+   *  Balayage de +-une demi-periode autour de la longueur d'origine, correlation
+   *  normalisee entre la tete de boucle et la position candidate.  Une boucle
+   *  multi-periodes n'a pas besoin d'etre un nombre entier de periodes « exact » :
+   *  elle a besoin que le signal a `loopEnd` soit en PHASE et en AMPLITUDE avec
+   *  celui a `loopStart`, ce que la correlation mesure directement. */
+  void refineLoopPoint(Region& g, const int16_t* scratch, float period,
+                       uint32_t targetL) const {
+    const uint32_t ls = g.loopStart;
+    const uint32_t L0 = g.loopEnd - g.loopStart;
+    if (L0 < 256) return;
+    const uint32_t span = std::max<uint32_t>(2u, static_cast<uint32_t>(period * 0.5f));
+    // 20 ms de fenetre : assez pour englober plusieurs periodes meme dans le grave
+    // (une periode vaut 3 ms au plus aigu), et deux fois moins de travail.
+    const uint32_t win = std::min<uint32_t>(static_cast<uint32_t>(0.020 * rate_), L0 / 4);
+    if (win < 32) return;
+    // Longueur visee : celle du groupe, bornee pour rester dans l'echantillon.
+    uint32_t centre = (targetL > 0) ? targetL : L0;
+    centre = std::min(centre, g.frames - win - 2);
+    auto mono = [&](uint32_t i) {
+      return 0.5 * (scratch[2 * i] + scratch[2 * i + 1]);
+    };
+    double e0 = 0;
+    for (uint32_t i = 0; i < win; ++i) { const double v = mono(ls + i); e0 += v * v; }
+    if (e0 <= 0) return;
+    const uint32_t lo = (centre > span) ? centre - span : 1;
+    const uint32_t hi = std::min<uint32_t>(centre + span, g.frames - win - 1);
+    if (hi <= lo) return;
+    double best = -2.0;
+    uint32_t bestL = centre;
+    for (uint32_t L = lo; L <= hi; ++L) {
+      double num = 0, den = 0;
+      for (uint32_t i = 0; i < win; ++i) {
+        const double a = mono(ls + i);
+        const double b = mono(ls + L + i);
+        num += a * b;
+        den += b * b;
+      }
+      if (den <= 0) continue;
+      const double c = num / std::sqrt(e0 * den);
+      if (c > best) { best = c; bestL = L; }
+    }
+    g.loopEnd = ls + bestL;
+  }
+
+  /** Periode reelle (echantillons) par autocorrelation sur la boucle decodee. */
+  float measurePeriod(const int16_t* pcm, const Region& g) const {
+    const uint32_t ls = g.loopStart, le = g.loopEnd;
+    const uint32_t L = le - ls;
+    if (L < 64) return 0.f;
+    const float f0 = 440.f * std::pow(2.f, (g.root - 69) / 12.f);
+    const double nom = rate_ / std::max(20.f, f0);
+    const uint32_t lo = static_cast<uint32_t>(std::max(8.0, nom * 0.80));
+    const uint32_t hi = static_cast<uint32_t>(std::min<double>(L / 4, nom * 1.25));
+    if (hi <= lo + 1) return 0.f;
+    // 8192 echantillons suffisent largement a fixer la periode : au-dela on ne
+    // gagne en precision que sous le 1/100 de periode, et le chargement de la
+    // banque est sur le thread UI.  La fenetre ne doit pas descendre sous
+    // quelques periodes, sinon le pic d'autocorrelation s'elargit.
+    const uint32_t W = std::min<uint32_t>(L, std::max<uint32_t>(2048u, static_cast<uint32_t>(nom * 12.0)));
+    // On correre sur le MONO, moyenne sur les deux canaux : un canal seul peut
+    // avoir un zero qui fausse le pic.
+    double e0 = 0;
+    for (uint32_t i = 0; i < W; ++i) {
+      const double v = 0.5 * (pcm[2 * (ls + i)] + pcm[2 * (ls + i) + 1]);
+      e0 += v * v;
+    }
+    if (e0 <= 0) return 0.f;
+    double best = -2.0;
+    uint32_t bestLag = 0;
+    for (uint32_t lag = lo; lag <= hi; ++lag) {
+      double a = 0;
+      for (uint32_t i = 0; i + lag < W; ++i) {
+        const double x = 0.5 * (pcm[2 * (ls + i)] + pcm[2 * (ls + i) + 1]);
+        const double y = 0.5 * (pcm[2 * (ls + i + lag)] + pcm[2 * (ls + i + lag) + 1]);
+        a += x * y;
+      }
+      a /= e0;
+      if (a > best) { best = a; bestLag = lag; }
+    }
+    return static_cast<float>(bestLag);
   }
 
   /** Decode une fois, au chargement, les regions les plus utiles. */
@@ -320,6 +472,7 @@ class PianoSampleReader {
       if (used + need > kPreloadBudgetSamples) continue;
       auto out = std::make_shared<std::vector<int16_t>>(need);
       decodeRegion(g, out->data());
+      treatRegion(out->data(), g);
       measureLayer(g, *out);
       pre_.emplace_back(idx, std::move(out));
       used += need;
@@ -487,7 +640,14 @@ class PianoSampleReader {
       dst[i * 2] = static_cast<int16_t>(step(nib(nL), predL, idxL));
       dst[i * 2 + 1] = static_cast<int16_t>(step(nib(nR), predR, idxR));
     }
+  }
+
+  /** Traitement de boucle d'une region, applique APRES `repairLoops()` : le
+   *  decodage seul ne connait pas encore la longueur de boucle corrigee. */
+  void treatRegion(int16_t* dst, const Region& g) const {
 #ifdef PIANO_NO_LOOP_FIX
+    // Banc : boucle brute du pack, pour mesurer ce que la correction apporte.
+    (void)dst;
     (void)g;
 #else
     flattenLoop(dst, g);
@@ -563,8 +723,39 @@ class PianoSampleReader {
     // echantillons (le clic periodique mesure a 0,57 cote sax).  Comme la boucle
     // fait un nombre entier de periodes, la phase d'avant loopStart est celle qui
     // suit reellement x[le-1].
+    // Longueur du fondu = une periode REELLE mesuree (pas la periode nominale) :
+    // c'est la seule facon pour que le dernier echantillon fondu retombe sur la
+    // phase exacte qui precede `loopStart`.
     const float f0 = 440.f * std::pow(2.f, (g.root - 69) / 12.f);
-    uint32_t xf = static_cast<uint32_t>(std::max(1.f, rate_ / std::max(20.f, f0)));
+    const float per = (g.period > 1.f) ? g.period : rate_ / std::max(20.f, f0);
+    // Fondu LONG (250 ms par defaut), la technique des banques de piano, et non une
+    // seule periode (~4 ms).  La boucle faisant un nombre ENTIER de periodes, le
+    // materiau juste AVANT `loopStart` est en phase avec celui juste avant `loopEnd` :
+    // un fondu long reste donc coherent en phase, et il lisse en plus toute
+    // discontinuite d'amplitude ou de timbre que le raccord laissait passer.
+    // Longueur du fondu de raccord : 200 ms, la valeur des banques de piano.
+    //
+    // Une seule periode (~4 ms) suffit a rendre le raccord CONTINU, mais pas
+    // INAUDIBLE : mesure de la tenue d'une note, somme des remontees d'enveloppe
+    // dans la partie audible (`tools/aetherfx/tail_echo.py`), c'est-a-dire le
+    // « dain dain » entendu :
+    //     fondu 1 periode (4 ms) :  3,4 dB
+    //     fondu 100 ms           :  0,0 dB
+    //     fondu 200 a 500 ms     :  0,0 dB
+    // Le fondu long n'abime pas la phase parce que la boucle commence sur une
+    // phase arbitraire et non sur un zero : tirer la fin vers le debut de boucle
+    // reste donc coherent, et lisser l'amplitude sur 200 ms masque en plus les
+    // differences de niveau entre la fin et le debut de boucle.
+    //
+    // L'oreille humaine n'entend pas un fondu de raccord de moins de ~50 ms, donc
+    // 200 ms ne peut pas etre percu comme un fondu : il est lu comme une tenue.
+#ifdef PIANO_XF_MS
+    const float xfSec = static_cast<float>(0.001 * PIANO_XF_MS);
+    uint32_t xf = static_cast<uint32_t>(std::max(1.f, std::max(per, xfSec * rate_)));
+#else
+    const float xfSec = 0.200f;
+    uint32_t xf = static_cast<uint32_t>(std::max(1.f, std::max(per, xfSec * rate_)));
+#endif
     xf = std::min(xf, std::min(L / 2, ls));   // il faut de la place AVANT loopStart
     for (uint32_t i = 0; i < xf; ++i) {
       const float u = static_cast<float>(i + 1) / static_cast<float>(xf + 1);
@@ -891,7 +1082,14 @@ class PianoVoice {
 
       // gain_ = normalisation de crete du pack (mesuree au chargement) : le pack
       // brut sortait a 1,0 et le produit avec la courbe de velocite ecretait.
-      const float out = amp * vel_ * gain_;
+      // Le niveau par defaut du rendu etait trop bas : mesure sur un accord fort,
+      // les huit pianos acoustiques plafonnaient a 37-47 % de crete et n'atteignaient
+      // jamais le genou du limiteur (0,80) — ~6 dB de reserve perdue a LEVEL 100 %.
+      // Les electriques sortaient deja a 56-77 %, donc la compensation est franche
+      // pour l'acoustique et moderee pour le tine, sinon les seconds mordent le
+      // limiteur.  Aucune valeur de LEVEL n'est touchee : c'est le gain par defaut
+      // du rendu qui remonte, pas un retune des presets.
+      const float out = amp * vel_ * gain_ * (tine_ ? 1.15f : 1.70f);
       outL[i] += mL * out;
       outR[i] += mR * out;
       if (hammerEnv_ > 1e-4f) {
@@ -921,7 +1119,14 @@ class PianoVoice {
         // Etouffoir : feutre qui retombe sur la corde, uniquement au relachement.
         // Plus bas et plus court que la touche (c'est un contact amorti), et son
         // niveau suit DAMPER NOISE, le reglage dedie.
-        float dn = noiseDamper_.next() * damperEnv_ * damperAmt_ * 0.5f;
+        //
+        // Le bruit est mis a l'echelle du niveau de la note (`out`), pas ajoute a
+        // niveau fixe.  A niveau fixe, il DOMINAIT la corde des que celle-ci avait
+        // decru : mesure au relachement d'une note tenue 1,6 s, +12,9 dB a C4 et
+        // +31,9 dB a C6 (une « explosion » a chaque relachement, d'autant plus
+        // forte que la note etait aigue et deja eteinte).  A l'echelle, l'ecart
+        // tombe sous +1 dB et l'etouffoir reste audible comme un contact.
+        float dn = noiseDamper_.next() * damperEnv_ * damperAmt_ * 0.12f * out;
         dL_ += kA_ * (dn - dL_);
         dR_ += kA_ * (dn * 0.88f - dR_);
         outL[i] += kB_ * dL_;
@@ -991,7 +1196,7 @@ class PianoStudio {
   void reset() {
     for (auto& b : mem_) b.reset();
     for (auto& b : air_) b.reset();
-    for (int i = 0; i < 2; ++i) { tone_[i].reset(); pres_[i].reset(); }
+    for (int i = 0; i < 2; ++i) { eqL_[i].reset(); eqM_[i].reset(); eqH_[i].reset(); pres_[i].reset(); }
     pre_.reset(); rev_.reset();
     cf_ = -1;
   }
@@ -1007,8 +1212,8 @@ class PianoStudio {
    * Tout est recalcule seulement quand un reglage bouge : les Biquad ont un
    * cout de calcul par echantillon, pas par bloc.
    */
-  void set(float pos, float dist, float lid, float bass, float mid, float treb,
-           float pres, float space, float width) {
+  void set(float pos, float dist, float lid, float pres, float space, float width,
+           float eqLow, float eqMid, float eqFreq, float eqHigh) {
     // Chaque famille de reglages a SON propre garde.  Les regrouper sous celui du
     // micro etait un bug mesure : une fois le preset pose, bouger TONE, PRESENCE,
     // SPACE ou WIDTH ne faisait plus rien tant que le micro ne bougeait pas aussi.
@@ -1027,13 +1232,21 @@ class PianoStudio {
       air_[0].setHighShelf(sr_, 9000, air);
       air_[1].setHighShelf(sr_, 9000, air);
     }
-    if (std::fabs(bass - cBass_) > 0.002f || std::fabs(mid - cMid_) > 0.002f ||
-        std::fabs(treb - cTreb_) > 0.002f) {
-      cBass_ = bass; cMid_ = mid; cTreb_ = treb;
+    // EQ 3 BANDES, independant du micro.  TROIS filtres distincts, un par bande :
+    // les appeler tous les trois sur le MEME Biquad n'en garde qu'un (le dernier
+    // ecrit), ce qui rendait les bandes grave et medium mortes — l'ancien « EQ »
+    // n'etait en realite qu'un shelf aigu.  Chaque bande a son objet, donc les
+    // trois agissent en cascade.  Le medium choisit sa frequence (300 Hz ..
+    // 2,7 kHz) : de quoi viser le « bark » vers 800 Hz, la chaleur 100-300 Hz ou
+    // le « twang » d'un honky-tonk, sans toucher au reste.
+    const float mf = 300.f * std::pow(9.f, eqFreq);
+    if (std::fabs(eqLow - cEqLow_) > 0.002f || std::fabs(eqHigh - cEqHigh_) > 0.002f ||
+        std::fabs(eqMid - cEqMid_) > 0.002f || std::fabs(mf - cEqMf_) > 1.f) {
+      cEqLow_ = eqLow; cEqMid_ = eqMid; cEqHigh_ = eqHigh; cEqMf_ = mf;
       for (int ch2 = 0; ch2 < 2; ++ch2) {
-        tone_[ch2].setLowShelf(sr_, 180, (bass - 0.5f) * 20.f);
-        tone_[ch2].setPeaking(sr_, 750, 0.8, (mid - 0.5f) * 16.f);
-        tone_[ch2].setHighShelf(sr_, 3200, (treb - 0.5f) * 20.f);
+        eqL_[ch2].setLowShelf(sr_, 120, (eqLow - 0.5f) * 24.f);
+        eqM_[ch2].setPeaking(sr_, mf, 0.9, (eqMid - 0.5f) * 24.f);
+        eqH_[ch2].setHighShelf(sr_, 3200, (eqHigh - 0.5f) * 24.f);
       }
     }
     if (std::fabs(pres - cPres_) > 0.002f) {
@@ -1052,7 +1265,9 @@ class PianoStudio {
       l = pre_.process(0, l); r = pre_.process(1, r);
       l = mem_[0].process(0, l); r = mem_[1].process(1, r);
       l = air_[0].process(0, l); r = air_[1].process(1, r);
-      l = tone_[0].process(0, l); r = tone_[1].process(1, r);
+      l = eqL_[0].process(0, l); r = eqL_[1].process(1, r);
+      l = eqM_[0].process(0, l); r = eqM_[1].process(1, r);
+      l = eqH_[0].process(0, l); r = eqH_[1].process(1, r);
       l = pres_[0].process(0, l); r = pres_[1].process(1, r);
       if (widthAmt_ != 1.f) { const float m = 0.5f * (l + r), s = 0.5f * (l - r) * widthAmt_; l = m + s; r = m - s; }
       // Limiteur doux, LINEAIRE sous le genou.  Un `tanh(x)` sec est non lineaire des
@@ -1081,25 +1296,28 @@ class PianoStudio {
 
  private:
   float sr_ = 44100.f;
-  Biquad mem_[2], air_[2], pre_, tone_[2], pres_[2];
+  Biquad mem_[2], air_[2], pre_, eqL_[2], eqM_[2], eqH_[2], pres_[2];
   SpaceReverb rev_;
   float spaceAmt_ = 0.3f, widthAmt_ = 1.f;
   float cPos_ = -1.f, cDist_ = -1.f, cLid_ = -1.f;
-  float cBass_ = -1.f, cMid_ = -1.f, cTreb_ = -1.f, cPres_ = -1.f;
+  float cEqLow_ = -1.f, cEqMid_ = -1.f, cEqHigh_ = -1.f, cEqMf_ = -1.f;
+  float cPres_ = -1.f;
   int cf_ = -1;
 };
 
 // ---------------------------------------------------------------------------
-// Moteur.  17 parametres (contrat de l'interface ; l'ordre est fige) :
+// Moteur.  20 parametres (contrat de l'interface ; l'ordre est fige) :
 //   0 HAMMER   durete de marteau      9 VEL      courbe de velocite (monotone)
 //   1 TONE     brillance              10 DAMPER  bruit d'etouffoir (au relachement)
 //   2 RESONANCE couplage resonateurs  11 DIST    distance du micro
 //   3 LID      couvercle              12 KEY     bruit de touche (a l'appui)
 //   4 MIC POS  position du micro      13 (libre)  ex-PUNCH, retire
-//   5 SPACE    piece                  14 EQ      basse/mid/aigu (macro)
+//   5 SPACE    piece                  14 EQ LOW  graves (shelf 120 Hz)
 //   6 WIDTH    largeur stereo         15 MODEL   choix du modele (Kotlin, en dernier)
 //   7 LEVEL    niveau                 16 HAMMER N bruit de marteau (la frappe)
-//   8 RELEASE  longueur de queue
+//   8 RELEASE  longueur de queue      17 EQ MID  medium (peaking, freq. 18)
+//                                     18 EQ FREQ frequence du medium (300..2700 Hz)
+//                                     19 EQ HIGH aigus (shelf 3,2 kHz)
 //
 // DRIVE (12) et PUNCH (13) sont RETIRES : deux reglages qu'aucun piano acoustique
 // n'a, et dont la saturation en serie ecrasait un pack deja a sa crete (« Amp
@@ -1107,10 +1325,17 @@ class PianoStudio {
 // libre (les presets enregistres le portent, le moteur l'ignore).  Le bruit de
 // marteau reprend l'index 16 : c'est le meme contrat a 17 que l'ancien, donc aucun
 // preset enregistre n'est tronque.
+//
+// 17, 18, 19 = EQ 3 BANDES (extension du 2026-11-05).  L'ancien EQ tenait sur un
+// seul potard (index 14) qui inclinait graves, medium et aigus ENSEMBLE : impossible
+// de creuser le bas-medium d'un Rhodes (« bark » a 800 Hz) sans eteindre aussi son
+// grave et son aigu.  Trois bandes independantes, c'est ce qui manquait pour
+// accorder un preset a la nature sonore de son instrument.  14 = GRAVES,
+// 17 = MEDIUM, 18 = FREQUENCE du medium (300 Hz .. 2,7 kHz), 19 = AIGUS.
 // ---------------------------------------------------------------------------
 class PianoEngine : public SourceFx {
  public:
-  static constexpr int kParams = 17;
+  static constexpr int kParams = 20;
   // 12 voix ne tiennent pas un accord tenu avec la pedale : des la 13e note le
   // moteur volait une voix.  Mesure : 2,5 % de CPU a 32 voix contre 2,7 % a 12
   // (le cout est domine par l'etage studio, pas par la voix), donc la marge est
@@ -1200,6 +1425,10 @@ class PianoEngine : public SourceFx {
     // Si la couche du dessus manque, on ne fond rien : srcA seul porte la note.
     if (!srcB.pcm) blend = 0.f;
     if (!srcA.pcm) { /* seule B existe : elle porte tout */ blend = 1.f; }
+#ifdef PIANO_SINGLE_LAYER
+    // Banc : couche unique, pour isoler le battement du fondu a deux couches.
+    blend = 0.f;
+#endif
     const float gain = reader_.normGain();
     voices_[slot].start(srcA, srcB, blend, note, v, sr_,
                         p(4), p(5), tine,
@@ -1338,7 +1567,7 @@ class PianoEngine : public SourceFx {
     // Etage studio : micro -> egaliseur -> largeur -> espace.  Il tourne meme sans
     // voix active, sinon la queue de reverb serait coupee net.  Plus d'ampli ni de
     // punch : les deux index sont retires du contrat (voir l'en-tete du moteur).
-    studio_.set(p(4), p(11), p(3), p(14), p(14), p(14), p(14), p(5), p(6));
+    studio_.set(p(4), p(11), p(3), p(14), p(5), p(6), p(14), p(17), p(18), p(19));
     if (any) {
       for (int i = 0; i < n; ++i) { io[2 * i] = tmpL_[i]; io[2 * i + 1] = tmpR_[i]; }
     } else {

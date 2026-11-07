@@ -25,8 +25,8 @@ object FxRegistry {
     const val SYNTH = 14
     const val LEADS = 15
     const val SAX_AE = 16
-    const val SLOTS_PER_TRACK = 6
-    const val SLOTS_MASTER = 8
+    const val SLOTS_PER_TRACK = 3
+    const val SLOTS_MASTER = 4
     const val MAX_PARAMS = 32
     const val STRIP_MASTER = 15  // strips: 0..7 soundfont tracks, 8 drum channel, 9 tonic pad, 10 drum-pad sampler
     val effectIds = listOf(0, 1, 2, 3, 4, 10, 11, 13)
