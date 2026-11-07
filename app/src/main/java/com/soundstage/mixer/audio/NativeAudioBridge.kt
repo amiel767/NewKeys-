@@ -226,6 +226,34 @@ object NativeAudioBridge {
         }
     }
 
+    fun safeSetFxEffect(strip: Int, slot: Int, fxId: Int): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            setFxEffect(strip, slot, fxId)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setFxEffect: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Empties every FX rack of the mixer. A rack belongs to ONE patch, so a patch
+     * change must leave nothing of the outgoing one installed: without this the
+     * previous patch's effects stayed on the strips (the window was closed, not the
+     * rack cleared) and bled into the new patch, which is what "the patches share
+     * their FX" was. Strips 0..7 are the tracks, [FxRegistry.STRIP_MASTER] the master.
+     */
+    fun safeClearFxRacks() {
+        if (!isLibraryLoaded) return
+        try {
+            for (strip in 0..7) for (slot in 0 until FX_SLOTS_TRACK) setFxEffect(strip, slot, -1)
+            for (slot in 0 until FX_SLOTS_MASTER) setFxEffect(FX_STRIP_MASTER, slot, -1)
+            fxCollectGarbage()
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking safeClearFxRacks: ${e.message}")
+        }
+    }
+
     /**
      * Load a sampled bank into the source on a strip. Returns false when the strip holds no
      * source, or a source without bank support (Organ, Synth, Leads) — the ordinary case.

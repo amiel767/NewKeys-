@@ -329,6 +329,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     val fileManager = FileManager(application.applicationContext)
     val audioEngine = AudioEngine(application.applicationContext)
     private val appStatePersistence = AppStatePersistence(application.applicationContext)
+    /** Contexte applicatif : pour les stockages qui ne passent pas par un objet d'etat. */
+    private val appContext: android.content.Context get() = getApplication<Application>().applicationContext
     private val soundFontLoadMutex = Mutex()
 
     // Transport clock partage par tous les composants rythmiques
@@ -389,6 +391,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
     private var engineStarted = false
+
+    /**
+     * Nom de la setlist a rouvrir au prochain demarrage. Pose pendant la
+     * restauration de l'etat (le scan des setlists n'a pas encore tourne a ce
+     * moment-la), consomme par [restoreLastOpenedSetlist] juste apres.
+     */
+    private var pendingSetlistRestore: String? = null
 
     private fun ensureEngineStarted() {
         if (engineStarted) return
@@ -565,6 +574,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "refreshStorageFiles warning: ${e.message}")
             }
+            // Le scan des setlists est termine : on peut rouvrir celle qui etait
+            // ouverte a la fermeture. C'est ce qui fait revenir la setlist ET le
+            // patch actifs, donc le rack FX qui y est rattache.
+            try {
+                restoreLastOpenedSetlist()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "restoreLastOpenedSetlist warning: ${e.message}")
+            }
             android.util.Log.d("MIXER_BOOT", "boot state restored; engineStarted=$engineStarted")
             
             // Non-intrusive permission check on startup (Android 11+)
@@ -580,14 +597,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Rouvre la setlist qui etait ouverte a la fermeture, avec son patch actif.
+     *
+     * L'etat persiste porte deja la setlist et le patch ; sans cette passe, le boot
+     * revenait toujours sur l'ecran Setlists avec une setlist vide, et l'utilisateur
+     * retrouvait un mixer different de celui qu'il avait laisse. On ne restaure QUE
+     * si la setlist existe encore sur disque, pour ne pas ouvrir une setlist supprimee.
+     */
+    private suspend fun restoreLastOpenedSetlist() {
+        // `refreshStorageFiles` lance le scan sans le bloquer : sans cette attente,
+        // `scenes` est encore vide et rien ne se rouvre.
+        refreshStorageJob?.join()
+        // `pendingSetlistRestore` vient du blob d'etat, ecrit par TOUS les chemins
+        // d'ouverture ; `setlist_last_opened` ne l'est que par l'ecran Setlists et
+        // sert de repli pour les etats plus anciens.
+        val name = pendingSetlistRestore ?: _uiState.value.lastOpenedSetlistId ?: return
+        val target = _uiState.value.scenes.find { it.id == name || it.name == name } ?: return
+        withContext(Dispatchers.Main) { openProject(target.name) }
+    }
+
     private fun restoreSavedAppState() {
         try {
             val saved = appStatePersistence.loadAppState()
             if (saved != null) {
-                // Démarrage: ne jamais restaurer de Setlist active automatiquement.
-                // L'utilisateur doit en choisir une explicitement pour que l'audio démarre.
-                val hasActive = false
-                val restoredProjectName = ""
+                // La setlist active n'est pas posee ici : `restoreLastOpenedSetlist`
+                // la rouvre APRÈS le scan des setlists (elle a besoin de `scenes`).
+                // C'est volontaire — le scan lit le disque, et rouvrir avant lui
+                // n'aurait rien a ouvrir. On ne retient donc que le NOM a rouvrir.
+                pendingSetlistRestore = saved.activeProjectName?.takeIf { it.isNotEmpty() && it != "None" }
 
                 _uiState.update { state ->
                     val restoredTheme = saved.themeName?.let { name ->
@@ -691,8 +729,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
-                        activeSceneId = if (hasActive) restoredProjectName else "",
-                        activeProjectName = if (hasActive) restoredProjectName else "",
+                        activeSceneId = "",
+                        activeProjectName = "",
                         visibleTracksCount = restoredVisibleTracks,
                         soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
                         soundGoodizerMode = restoredMode,
@@ -3878,6 +3916,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // Completely unload all previous soundfonts and silence active voices before switching Setlist
                 NativeAudioBridge.safeAllNotesOff()
                 NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+                // Un setlist porte ses propres patches : le rack FX du setlist sortant
+                // ne doit pas rester installe sur le moteur pour le setlist entrant.
+                NativeAudioBridge.safeClearFxRacks()
                 NativeAudioBridge.safeTrimMemory()
 
                 val sceneFiles = fileManager.getSceneFiles()
@@ -4814,6 +4855,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (isBlank) {
             NativeAudioBridge.safeAllNotesOff()
             NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeClearFxRacks()
             NativeAudioBridge.safeTrimMemory()
             val fresh = createInitialState()
             val initialPatch = PatchItem(
@@ -5158,6 +5200,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (isBlank) {
             NativeAudioBridge.safeAllNotesOff()
             NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeClearFxRacks()
             NativeAudioBridge.safeTrimMemory()
         }
 
@@ -5249,6 +5292,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // delay/reverb buffers; the EFFECTS popup is closed so the window never
         // keeps showing the previous patch's rack after the swap.
         NativeAudioBridge.safeFxPanic()
+        // 2c. Vide les racks FX du moteur. `fxPanic` ne jette que les queues
+        // (delay/reverb) : les EFFETS eux-memes restaient installes sur les pistes.
+        // Le patch sortant laissait donc ses Space (et leurs reglages) sur le
+        // moteur, et le patch entrant heritait d'un rack qu'il ne possede pas. Un
+        // rack appartient au patch : on le defait ici, la fenetre le reconstruira
+        // depuis le stockage du patch entrant a sa prochaine ouverture.
+        NativeAudioBridge.safeClearFxRacks()
         if (state.activePopup == ActivePopup.EFFECTS) {
             _uiState.update { it.copy(activePopup = ActivePopup.NONE) }
         }
@@ -5385,6 +5435,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (idx >= 0) {
             lastDeletedPatch = state.patches[idx]
             lastDeletedPatchIndex = idx
+            // Le rack du patch est efface avec lui : sans ca les cles d'un patch
+            // supprime resteraient dans les preferences pour toujours (une entree par
+            // piste). On les garde en memoire pour que l'annulation les rende.
+            val doomed = state.patches[idx].id
+            lastDeletedPatchFx = com.soundstage.mixer.fx.FxPersistence.allStrips(appContext, doomed)
+                .associateWith { com.soundstage.mixer.fx.FxPersistence.load(appContext, doomed, it) ?: "" }
+            com.soundstage.mixer.fx.FxPersistence.clear(appContext, doomed)
         }
         val updatedPatches = state.patches.filterNot { it.id == patchId || it.name == patchId }
         val nextActivePatch = updatedPatches.lastOrNull()
@@ -5405,10 +5462,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private var lastDeletedPatch: PatchItem? = null
     private var lastDeletedPatchIndex: Int = -1
+    /** Racks FX du dernier patch supprime (piste -> JSON), rendus par l'annulation. */
+    private var lastDeletedPatchFx: Map<Int, String> = emptyMap()
 
     fun undoDeletePatch() {
         val p = lastDeletedPatch ?: return
         val idx = lastDeletedPatchIndex
+        lastDeletedPatchFx.forEach { (strip, json) ->
+            com.soundstage.mixer.fx.FxPersistence.save(appContext, p.id, strip, json)
+        }
+        lastDeletedPatchFx = emptyMap()
         _uiState.update { state ->
             val list = state.patches.toMutableList()
             list.add(idx.coerceIn(0, list.size), p)

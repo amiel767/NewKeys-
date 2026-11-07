@@ -1016,15 +1016,19 @@ fun MixerScreen(
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
                 // The Æther FX window is DETACHED: it no longer lives inside the
-                // mixer. `com.aetherkeys.fx.FxWindow` is its own surface, fed by
-                // the `FxWindowState` / `FxWindowActions` contract. FxDesignHost is
-                // that host: it translates the mixer's engine ids and 32-float
-                // parameter arrays into the contract, and the window itself is
-                // untouched.
+                // mixer. `com.aetherkeys.fx.FxSlotsWindow` is its own surface;
+                // FxDesignHost is the only place that knows both the engine
+                // vocabulary and the window's. The window itself is untouched.
                 com.soundstage.mixer.ui.fx.FxDesignHost(
                     trackId = uiState.activeEffectTrackId,
                     onClose = { viewModel.closePopup() },
                     modifier = Modifier.fillMaxSize().zIndex(130f),
+                    // Les effets appartiennent au patch : deux patches ne partagent
+                    // jamais un rack, et en changer laisse le précédent derrière.
+                    scope = com.soundstage.mixer.ui.fx.fxScopeOf(
+                        uiState.activePatchId,
+                        uiState.activeSceneId.ifEmpty { uiState.activeProjectName },
+                    ),
                 )
             }
             ActivePopup.SOUNDFONT -> {

@@ -24,6 +24,25 @@ Le decodeur vit maintenant dans `tools/kontakt/ncw_decode.py` (commit `106f93d`)
   faut `--rerun` sinon UP-TO-DATE. `testDebugUnitTest` seul ne reecrit rien.
 - `AeChip(c,idx,i,n)` = i/(n-1) ; le moteur sax mappe `lround(p(0)*3)` sur 4 types :
   retirer un chip impose de GARDER n=4.
+- Sandbox vierge a chaque session : reinstaller JDK 21 (trixie n'a pas de 17),
+  SDK a /workspace/android-sdk sans JDK. Roborazzi n'ecrit un PNG qu'avec
+  `recordRoborazziDebug` (jamais `testDebugUnitTest` seul, jamais sans --tests).
+- 401 « token_not_found_in_db » = proxy LiteLLM, pas le depot. Sortir net, pas
+  de retry. Veille via dump local, zero reseau.
+- **Mode economique (demande utilisateur) : toute commande sort <= 10 lignes.**
+  `cmd > /tmp/x.log 2>&1; tail -3`. Jamais de `ls -la`/`grep`/`cat` non filtres,
+  jamais de dump de script par heredoc (il revient en entier), jamais de listing
+  complet. Mesures ecrites sur disque, lues par agregat. Une conversation qui
+  gonfle coute a CHAQUE tour suivant.
+- **Courbe `FreqLog` = balayage log de la plage du parametre**, `reel = min*(max/min)^n`,
+  jamais une constante. La formule fixe `20*1000^n` ignorait min/max et annoncait
+  6860 Hz pour un reglage declare 100..1000 Hz (BassFreq, + les 3 freq d'EQ). Deux
+  copies a garder d'accord : C++ `aetherfx/fx_registry.h` et Kotlin
+  `mixer/fx/FxRegistry.toReal`. Banc d'invariant : `tools/design/regcheck.cpp`.
+- `grep -r` depuis `app/` ramasse `app/build/kspCaches/*` : une seule ligne de
+  plusieurs centaines de Ko. Toujours `--include=*.kt`/`*.h` ou exclure `app/build/`.
+- **Un banc doit echouer sur une faute connue** avant d'etre cru : `regcheck` remis
+  sur l'ancienne formule sort 90 echecs. Un banc qui passe toujours ne prouve rien.
 - Sandbox vierge a chaque session : JDK 21 a installer (trixie n'a pas de 17) ;
   SDK dans `/workspace/android-sdk` (sans JDK). `restore_env.sh` est CASSE.
 - 401 « token_not_found_in_db » = proxy LiteLLM, pas le depot : sortir net.
@@ -222,6 +241,79 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   avec `isOpen` deja vrai -> `AnimatedVisibility` seul peint la taille finale des la
   1re frame ; garde d'une frame (`shown` via `LaunchedEffect(Unit)`).
 
+## Session 2026-11-05 — finition FX Space (branche design/fx-reverb)
+- **Captures Roborazzi : les PNG sortent dans `app/app/src/test/screenshots/`** (chemin
+  relatif au module), et `-Proborazzi.test.record=true` **ne reecrit rien** si la tache
+  est `UP-TO-DATE` : il faut `--rerun-tasks`. Un md5 inchange = cache, pas un bug.
+- **Fond bicolore par preset** : un degrade entre deux teintes sombres ne se lit pas
+  (243° contre 249° mesures). Il faut l'aplat + DEUX voiles radiaux colores (`h` et
+  `h2`) en coins opposes. Verifier la teinte MESUREE.
+- **Magma du gros potard pilote par la valeur** : capture `fx_space_knob_low` le prouve
+  (noyau 80,9 -> 50,4 de luminance, 21257 -> 4778 px chauds). Braise contenue.
+- **Liste deroulante** : dans Compose, un frere declare apres passe dessus — il faut un
+  `Box` parent + `zIndex(2f)` + liste opaque. Declaree dans la colonne de la grille,
+  elle passe dessous.
+- Reference de design : `tools/design/SK_GRAMMAR.md` (Sunday Keys) ; Valhalla dans
+  `/workspace/dl/valhalla/`. Livraison : `tools/shots_page.py` + `tools/serve.py` (12000).
+
+## Session 2026-11-05 (suite) — FX : potards PLATS (fin du dome 3D Valhalla)
+Branche `design/fx-reverb`, commit `3acac9c`. `main` reste a la conversation Æther
+Piano `9c93aa40` — ne pas y pousser.
+- **Le potard Valhalla est PLAT.** Mesure sur `room_24.jpg` : disque **uniforme 121**
+  sur panneau **52** (rapport 2,3), **sans liseré** (transition franche en 1 px).
+  Ni dôme, ni dégradé de corps, ni collerette. Il ne se lit que par disque plus
+  clair + aiguille + coin de valeur. **Test** : luminance au CENTRE contre au BORD —
+  centre >> bord = dôme (à supprimer), centre == bord = plat.
+- **L'aiguille est SOMBRE** sur le disque clair (RGB 52), jamais blanche — corrige
+  une note antérieure fausse. L'indicateur de valeur est un **coin plein** au bord
+  (rayon 28→57 sur un disque de 54, ~25°), pas un arc d'épaisseur constante.
+- `FxKnob.kt` refait plat ; `FxMagmaKnob.kt` : **meme pièce** que les petits
+  (`drawFxKnob` partagé, deux échelles). Une « braise » à lobes était une invention.
+- `FxFonts.display` = Orbitron (medium/bold) pour le titre de page (ex-Cinzel 27 sp).
+- Case preset = **pastille compacte** (26 dp, nom du preset seul), à droite ; la
+  liste déroulante est ancrée à droite en 168 dp.
+- **Chemin de capture** : le test JVM a `app/` comme cwd, donc `captureRoboImage`
+  doit écrire `src/test/screenshots/...` (pas `app/src/...`, qui crée `app/app/`).
+- **Roborazzi n'écrit un PNG qu'en `recordRoborazziDebug`.** En `testDebugUnitTest`
+  un test qui fait `assertTrue(File(...).exists())` échoue : le fichier n'est pas
+  régénéré. Piège reconfirmé (coûte une passe à chaque fois).
+- **`FxDesignTest`** (nouveau) exige `@RunWith(RobolectricTestRunner)` : `FxDesign`
+  construit ses couleurs par `android.graphics.Color.parseColor` (absent sur JVM nue).
+- **Geometrie des cellules** : `FxGeo.CELLS = 3`. A deux colonnes les rangees
+  ecrasaient le potard (**52 unites mesurees au lieu de 96**, invisible a l'oeil).
+  Le diametre est desormais adaptatif (`BoxWithConstraints` -> plus grand disque qui
+  entre). Mesure apres : gros potard **197**, potard de cellule **75**.
+- **Environnement** : le snapshot Debian renvoie **404** sur openjdk-21 ->
+  télécharger Temurin (`api.adoptium.net`), `JAVA_HOME=/workspace/jdk/jdk-21.0.13+9`.
+
+## Session 2026-11-05 — FX Space : potards plats, cellules, 15 reglages
+- **Perimetre** : perazfinage Design des FX uniquement, branche `design/fx-reverb`
+  (hors `main`). Fichiers : `AeSpaceScreen.kt`, `FxCard.kt`, `FxDesign.kt`,
+  `FxEffectPage.kt`, `FxWindowState.kt`, `FxDesignHost.kt`, `fx_space.h`,
+  `fx_registry.h`, les 2 `FxRegistry.kt`.
+- **Le 3D est retire** : la carte Slots ne porte plus d'orbe (`FxOrb` = MORT,
+  liste noire) mais **six potards plats** du preset (`AeSpaceSlotKnobs`),
+  reglables depuis la carte (`setSlotValue`). Le gros potard DECAY est un anneau
+  plat + aiguille, pas un dôme.
+- **15 reglages** dans l'ordre du moteur ; l'UI pousse par INDEX -> l'accord
+  catalogue <-> registre est verrouille par `FxDesignTest` (13/13, JVM pur).
+- **Robolectric n'a pas de cache ici** : un test qui l'exige echoue sans reseau.
+  `FxDesign` etant sans API Android, le test est JVM pur. **Mais** tout helper
+  vivant dans un fichier Compose (ex. `spaceStyleFor` dans `AeSpaceScreen.kt`)
+  tire les icones Android et leve `ExceptionInInitializerError` : le deplacer
+  dans le catalogue pur.
+- **Keystore de debug gitignore** : regenerer par `keytool -genkeypair` (alias
+  `androiddebugkey`, pass `android`) sinon `assembleDebug` echoue a la signature.
+
+## Fenêtre FX : nouvelle coque `FxSlotsWindow` (branche `design/fx-reverb`, commit `2867d39`)
+- Le Kotlin de DeepSeek a été récupéré **dans le dépôt** (`git show 06826f3:FxSlotsWindow.kt`),
+  pas par le lien (CloudFront bloque les IP datacenter). Le lien était mort, le fichier non.
+- Modèle : 1 slot MIDI + 3 audio, catalogue dans la fenêtre, éditeur passé par paramètre.
+  Catalogue limité à `Arp` (MIDI) et `Reverb`/Æther Space (audio) via la liste `CATALOG`.
+- **Piège** : `FxSlotsController.state` est un **StateFlow** → `collectAsState()` obligatoire,
+  `state.value` en composition ne recompose pas (catalogue/éditeur muets).
+- Ancienne fenêtre + résidus supprimés (12 fichiers) ; le design des éditeurs conservé
+  (`AeSpaceScreen`, `FxDesign`, `FxFonts`, `FxIcons`, `FxC`).
 ## Sheets — flottant + bibliotheque (New 2, 2026-11-04, commit 88f01af)
 - **Imports Compose non-wildcard** : `Modifier.border`, `Spacer`, `fillMaxHeight`,
   `FontWeight` doivent etre importes nommement. `assertExists()` est une methode, pas

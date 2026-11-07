@@ -14,6 +14,7 @@ class SoundStageApplication : Application() {
         super.onCreate()
         setupGlobalExceptionHandler()
         com.soundstage.mixer.instruments.initAetherInstruments(this)
+        com.soundstage.mixer.fx.FxUserStore.app = applicationContext
     }
 
     private fun setupGlobalExceptionHandler() {

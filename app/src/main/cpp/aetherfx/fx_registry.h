@@ -22,9 +22,14 @@ struct EffectInfo { const char* name; const char* type; std::vector<ParamDesc> p
 
 constexpr float kRatios[6] = {1.5f, 2.f, 3.f, 4.f, 8.f, 20.f};
 
+// The frequency curves are a LOG SWEEP OF THE PARAMETER'S OWN RANGE: the law is
+// real = min * (max/min)^norm. It used to be the fixed `20 * 1000^norm`, which
+// ignores min/max entirely: a 100..1000 Hz control reported 6860 Hz at the top of
+// its travel. Every FreqLog parameter must satisfy min > 0, which the registry
+// guarantees (they are all frequencies).
 inline float toReal(const ParamDesc& d, float norm) {
   switch (d.curve) {
-    case Curve::FreqLog: return 20.f * std::pow(1000.f, norm);
+    case Curve::FreqLog: return d.min * std::pow(d.max / d.min, norm);
     case Curve::RatioStep: return kRatios[static_cast<int>(std::lround(norm * 5.f))];
     default: return d.min + (d.max - d.min) * norm;
   }
@@ -34,13 +39,25 @@ inline const EffectInfo& info(int id) {
   static const std::vector<EffectInfo> all = [] {
     std::vector<EffectInfo> v(FX_COUNT);
     using C = Curve;
+    // The FOUR FREQUENCIES are Curve::FreqLog: their normalised value is logarithmic, so
+    // the useful band is not squeezed into the first tenth of the knob. See
+    // SpaceReverb::freqHz, which is the single place the mapping lives.
     v[FX_SPACE] = {"Aether Space", "Reverb",
-      {{"Size", 0, 100, "%", 0, .62f, C::Linear}, {"Decay", .4f, 8, "s", 1, .7f, C::Linear}, {"Pre-delay", 0, 120, "ms", 0, .2f, C::Linear},
-       {"Damp", 1, 12, "kHz", 1, .45f, C::Linear}, {"Width", 0, 100, "%", 0, .8f, C::Linear}, {"Mix", 0, 100, "%", 0, .35f, C::Linear},
-       {"Diffuse", 0, 100, "%", 0, .5f, C::Linear}},
-      {{"Hall", {.62f, .7f, .2f, .45f, .8f, .35f, .5f}}, {"Plate", {.4f, .5f, .1f, .7f, .9f, .3f, .7f}}, {"Room", {.25f, .3f, .05f, .5f, .6f, .25f, .3f}},
-       {"Cathedral", {.95f, .95f, .35f, .3f, 1, .45f, .8f}}, {"Shimmer", {.7f, .85f, .25f, .2f, 1, .5f, .9f}}, {"Chamber", {.35f, .4f, .08f, .55f, .7f, .28f, .45f}},
-       {"Bloom", {.8f, .8f, .3f, .35f, .95f, .42f, 1}}, {"Infinite", {1, 1, .4f, .25f, 1, .6f, .95f}}}};
+      {{"Mix", 0, 100, "%", 0, .34f, C::Linear}, {"Pre-delay", 0, 200, "ms", 0, .10f, C::Linear}, {"Decay", .1f, 30, "s", 2, .13f, C::Linear},
+       {"HighFreq", 1000, 16000, "Hz", 0, .6462f, C::FreqLog}, {"HighShelf", -24, 0, "dB", 1, .50f, C::Linear}, {"BassFreq", 100, 1000, "Hz", 0, .8451f, C::FreqLog},
+       {"BassMult", .5f, 3, "X", 2, .40f, C::Linear}, {"Size", 0, 100, "%", 0, 1.f, C::Linear}, {"Attack", 0, 100, "%", 0, .50f, C::Linear},
+       {"Early", 0, 100, "%", 0, 1.f, C::Linear}, {"Late", 0, 100, "%", 0, 1.f, C::Linear}, {"Rate", .1f, 10, "Hz", 2, .25f, C::Linear},
+       {"Depth", 0, 100, "%", 0, .38f, C::Linear}, {"HighCut", 1000, 20000, "Hz", 0, .6941f, C::FreqLog}, {"LowCut", 10, 500, "Hz", 0, 0.f, C::FreqLog}},
+       {{"Shimmer", {0.3800f, 0.1400f, 0.2467f, 0.7925f, 0.5000f, 0.8451f, 0.4000f, 0.8200f, 0.6200f, 0.7000f, 0.8000f, 0.1111f, 0.4600f, 0.9255f, 0.7388f}},
+       {"Chamber", {0.3000f, 0.0700f, 0.0862f, 0.6751f, 0.5000f, 0.6989f, 0.4600f, 0.4800f, 0.4000f, 0.6000f, 0.5500f, 0.0505f, 0.2200f, 0.8295f, 0.5617f}},
+       {"Room", {0.2400f, 0.0300f, 0.0336f, 0.5946f, 0.7500f, 0.6233f, 0.3200f, 0.3000f, 0.5500f, 0.8000f, 0.4000f, 0.0253f, 0.1200f, 0.7335f, 0.4579f}},
+       {"Hall", {0.3400f, 0.1000f, 0.1304f, 0.6462f, 0.5000f, 0.8451f, 0.4000f, 1.0000f, 0.5000f, 1.0000f, 1.0000f, 0.2455f, 0.3800f, 0.6941f, 0.0000f}},
+       {"Plate", {0.3200f, 0.0500f, 0.0706f, 0.8649f, 0.8333f, 0.5441f, 0.2000f, 0.5500f, 0.7200f, 0.9000f, 0.7000f, 0.0707f, 0.1800f, 0.9040f, 0.6746f}},
+       {"Cathedral", {0.4200f, 0.2400f, 0.4181f, 0.5176f, 0.2500f, 0.9031f, 0.6400f, 0.9600f, 0.2500f, 0.5000f, 0.9000f, 0.0303f, 0.3000f, 0.6496f, 0.6352f}},
+       {"Spring", {0.2800f, 0.0200f, 0.0572f, 0.7315f, 0.6667f, 0.6532f, 0.3200f, 0.4000f, 0.8000f, 0.7000f, 0.3500f, 0.3131f, 0.5200f, 0.7849f, 0.6922f}},
+       {"Cloud", {0.4800f, 0.3000f, 0.2980f, 0.4619f, 0.1667f, 0.8129f, 0.5200f, 0.9000f, 0.1800f, 0.4000f, 1.0000f, 0.0808f, 0.6400f, 0.6248f, 0.6130f}},
+       {"Infinite", {0.4500f, 0.4000f, 0.6980f, 0.5000f, 0.1667f, 0.8451f, 0.7200f, 1.0000f, 0.3000f, 0.5000f, 1.0000f, 0.0707f, 0.7000f, 0.7686f, 0.7783f}},
+       {"Bloom", {0.4200f, 0.3000f, 0.2800f, 0.5504f, 0.2500f, 0.8129f, 0.5600f, 0.9500f, 0.3500f, 1.0000f, 0.6000f, 0.0505f, 0.6000f, 0.5981f, 0.7087f}}}};
     const float dt[8] = {.15f, .9f, .3f, .7f, .45f, .5f, .6f, .3f};
     std::vector<ParamDesc> ep;
     static const char* tn[4] = {"Time 1", "Time 2", "Time 3", "Time 4"}; static const char* ln[4] = {"Level 1", "Level 2", "Level 3", "Level 4"};

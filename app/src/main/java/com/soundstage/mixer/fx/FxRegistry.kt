@@ -35,25 +35,35 @@ object FxRegistry {
     val all: List<FxInfo> = listOf(
         FxInfo(0, "Æther Space", "Reverb", FxKind.EFFECT,
             listOf(
-                FxParam("Size", 0f, 100f, "%", 0, 0.62f, FxCurve.LINEAR, false),
-                FxParam("Decay", 0.4f, 8f, "s", 1, 0.7f, FxCurve.LINEAR, false),
-                FxParam("Pre-delay", 0f, 120f, "ms", 0, 0.2f, FxCurve.LINEAR, false),
-                FxParam("Damp", 1f, 12f, "kHz", 1, 0.45f, FxCurve.LINEAR, false),
-                FxParam("Width", 0f, 100f, "%", 0, 0.8f, FxCurve.LINEAR, false),
-                FxParam("Mix", 0f, 100f, "%", 0, 0.35f, FxCurve.LINEAR, false),
-                FxParam("Diffuse", 0f, 100f, "%", 0, 0.5f, FxCurve.LINEAR, false),
+            FxParam("Mix", 0f, 100f, "%", 0, 0.34f, FxCurve.LINEAR, false),
+            FxParam("Pre-delay", 0f, 200f, "ms", 0, 0.1f, FxCurve.LINEAR, false),
+            FxParam("Decay", 0.1f, 30f, "s", 2, 0.13f, FxCurve.LINEAR, false),
+            FxParam("HighFreq", 1000f, 16000f, "Hz", 0, 0.6462f, FxCurve.FREQ_LOG, false),
+            FxParam("HighShelf", -24f, 0f, "dB", 1, 0.5f, FxCurve.LINEAR, false),
+            FxParam("BassFreq", 100f, 1000f, "Hz", 0, 0.8451f, FxCurve.FREQ_LOG, false),
+            FxParam("BassMult", 0.5f, 3f, "X", 2, 0.4f, FxCurve.LINEAR, false),
+            FxParam("Size", 0f, 100f, "%", 0, 1f, FxCurve.LINEAR, false),
+            FxParam("Attack", 0f, 100f, "%", 0, 0.5f, FxCurve.LINEAR, false),
+            FxParam("Early", 0f, 100f, "%", 0, 1f, FxCurve.LINEAR, false),
+            FxParam("Late", 0f, 100f, "%", 0, 1f, FxCurve.LINEAR, false),
+            FxParam("Rate", 0.1f, 10f, "Hz", 2, 0.25f, FxCurve.LINEAR, false),
+            FxParam("Depth", 0f, 100f, "%", 0, 0.38f, FxCurve.LINEAR, false),
+            FxParam("HighCut", 1000f, 20000f, "Hz", 0, 0.6941f, FxCurve.FREQ_LOG, false),
+            FxParam("LowCut", 10f, 500f, "Hz", 0, 0f, FxCurve.FREQ_LOG, false),
             ),
             listOf(
-                FxPreset("Hall", listOf(0.62f, 0.7f, 0.2f, 0.45f, 0.8f, 0.35f, 0.5f)),
-                FxPreset("Plate", listOf(0.4f, 0.5f, 0.1f, 0.7f, 0.9f, 0.3f, 0.7f)),
-                FxPreset("Room", listOf(0.25f, 0.3f, 0.05f, 0.5f, 0.6f, 0.25f, 0.3f)),
-                FxPreset("Cathedral", listOf(0.95f, 0.95f, 0.35f, 0.3f, 1f, 0.45f, 0.8f)),
-                FxPreset("Shimmer", listOf(0.7f, 0.85f, 0.25f, 0.2f, 1f, 0.5f, 0.9f)),
-                FxPreset("Chamber", listOf(0.35f, 0.4f, 0.08f, 0.55f, 0.7f, 0.28f, 0.45f)),
-                FxPreset("Bloom", listOf(0.8f, 0.8f, 0.3f, 0.35f, 0.95f, 0.42f, 1f)),
-                FxPreset("Infinite", listOf(1f, 1f, 0.4f, 0.25f, 1f, 0.6f, 0.95f)),
+            FxPreset("Shimmer", listOf(0.38f, 0.14f, 0.2467f, 0.7925f, 0.5f, 0.8451f, 0.4f, 0.82f, 0.62f, 0.7f, 0.8f, 0.1111f, 0.46f, 0.9255f, 0.7388f)),
+            FxPreset("Chamber", listOf(0.3f, 0.07f, 0.0862f, 0.6751f, 0.5f, 0.6989f, 0.46f, 0.48f, 0.4f, 0.6f, 0.55f, 0.0505f, 0.22f, 0.8295f, 0.5617f)),
+            FxPreset("Room", listOf(0.24f, 0.03f, 0.0336f, 0.5946f, 0.75f, 0.6233f, 0.32f, 0.3f, 0.55f, 0.8f, 0.4f, 0.0253f, 0.12f, 0.7335f, 0.4579f)),
+            FxPreset("Hall", listOf(0.34f, 0.1f, 0.1304f, 0.6462f, 0.5f, 0.8451f, 0.4f, 1f, 0.5f, 1f, 1f, 0.2455f, 0.38f, 0.6941f, 0f)),
+            FxPreset("Plate", listOf(0.32f, 0.05f, 0.0706f, 0.8649f, 0.8333f, 0.5441f, 0.2f, 0.55f, 0.72f, 0.9f, 0.7f, 0.0707f, 0.18f, 0.904f, 0.6746f)),
+            FxPreset("Cathedral", listOf(0.42f, 0.24f, 0.4181f, 0.5176f, 0.25f, 0.9031f, 0.64f, 0.96f, 0.25f, 0.5f, 0.9f, 0.0303f, 0.3f, 0.6496f, 0.6352f)),
+            FxPreset("Spring", listOf(0.28f, 0.02f, 0.0572f, 0.7315f, 0.6667f, 0.6532f, 0.32f, 0.4f, 0.8f, 0.7f, 0.35f, 0.3131f, 0.52f, 0.7849f, 0.6922f)),
+            FxPreset("Cloud", listOf(0.48f, 0.3f, 0.298f, 0.4619f, 0.1667f, 0.8129f, 0.52f, 0.9f, 0.18f, 0.4f, 1f, 0.0808f, 0.64f, 0.6248f, 0.613f)),
+            FxPreset("Infinite", listOf(0.45f, 0.4f, 0.698f, 0.5f, 0.1667f, 0.8451f, 0.72f, 1f, 0.3f, 0.5f, 1f, 0.0707f, 0.7f, 0.7686f, 0.7783f)),
+            FxPreset("Bloom", listOf(0.42f, 0.3f, 0.28f, 0.5504f, 0.25f, 0.8129f, 0.56f, 0.95f, 0.35f, 1f, 0.6f, 0.0505f, 0.6f, 0.5981f, 0.7087f)),
             )),
-        FxInfo(1, "Aether Echo", "Delay", FxKind.EFFECT,
+FxInfo(1, "Aether Echo", "Delay", FxKind.EFFECT,
             listOf(
                 FxParam("Time 1", 10f, 1000f, "ms", 0, 0.15f, FxCurve.LINEAR, false),
                 FxParam("Level 1", 0f, 100f, "%", 0, 0.9f, FxCurve.LINEAR, false),
@@ -511,8 +521,11 @@ object FxRegistry {
 
     // id == -1 is the "no Aether instrument" sentinel and must never index all[-1].
     fun info(id: Int): FxInfo = all.getOrElse(id) { all[0] }
+    // La courbe FREQ_LOG est un balayage log de la PLAGE du parametre :
+    // reel = min * (max/min)^n. La formule fixe `20 * 1000^n` ignorait min/max :
+    // un reglage 100..1000 Hz annoncait 6860 Hz en haut de course.
     fun toReal(p: FxParam, norm: Float): Float = when (p.curve) {
-        FxCurve.FREQ_LOG -> 20f * Math.pow(1000.0, norm.toDouble()).toFloat()
+        FxCurve.FREQ_LOG -> p.min * Math.pow((p.max / p.min).toDouble(), norm.toDouble()).toFloat()
         FxCurve.RATIO_STEP -> floatArrayOf(1.5f, 2f, 3f, 4f, 8f, 20f)[Math.round(norm * 5f)]
         FxCurve.LINEAR -> p.min + (p.max - p.min) * norm
     }

@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Organ Synth - Full Engine Integration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #141B27;
+            --bg-panel: #1e2433;
+            --bg-panel-dark: #151a24;
+            --border-color: rgba(255, 255, 255, 0.05);
+            --text-main: #F4F6FB;
+            --text-sub: #7B859A;
+            --accent-blue: #8FB2E8;
+            --accent-blue-soft: #A8C5F0;
+            --accent-glow: rgba(143, 178, 232, 0.4);
+            --zoom: 1; --pan-x: 0px; --pan-y: 0px;
+        }
+        * { -webkit-tap-highlight-color: transparent; outline: none; box-sizing: border-box; }
+        body {
+            margin: 0; background-color: #080B11;
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden; width: 100vw; height: 100vh;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            touch-action: none; user-select: none;
+        }
+        .preview-viewport {
+            width: 100%; height: 100%; display: flex;
+            justify-content: center; align-items: center;
+            overflow: hidden; position: relative; cursor: grab;
+        }
+        .preview-viewport:active { cursor: grabbing; }
+        .phone-mockup {
+            width: 891px; height: 411px; flex: none;
+            transform: translate(var(--pan-x), var(--pan-y)) scale(var(--zoom));
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+            position: relative; border-radius: 24px;
+            box-shadow: 0 0 0 4px #1B212C, 0 25px 60px rgba(0,0,0,.8);
+            background: linear-gradient(180deg, var(--bg-main), #0F141D);
+        }
+        .organ-app {
+            width: 100%; height: 100%; border-radius: 24px;
+            padding: 8px;
+            display: grid; grid-template-columns: 25% 1fr 28%;
+            grid-template-rows: 82px 104px 112px 79px;
+            gap: 6px;
+            grid-template-areas:
+                "oct      presets  model"
+                "vibrato  drawbars eq"
+                "rotary   drawbars drive"
+                "rotary   drawbars reverb";
+            overflow: hidden;
+        }
+        .panel {
+            background: linear-gradient(180deg, var(--bg-panel), var(--bg-panel-dark));
+            border: 1px solid var(--border-color); border-radius: 10px;
+            display: flex; flex-direction: column;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 10px rgba(0,0,0,0.4);
+            padding: 4px; position: relative; overflow: hidden;
+        }
+        .panel.panel-presets { overflow: visible; }
+        .panel-header {
+            position: absolute; top: 4px; left: 6px;
+            display: inline-flex; align-items: center; gap: 6px;
+            z-index: 10; pointer-events: none;
+        }
+        .panel-header button, .panel-title { pointer-events: auto; }
+        .panel-header.split-header { right: 6px; justify-content: space-between; }
+        .title-section { display: flex; align-items: center; gap: 4px; }
+        .panel-title {
+            font-size: 8px; font-weight: 800; color: var(--text-sub);
+            text-transform: uppercase; letter-spacing: 1px; opacity: 0.7;
+        }
+        .panel-content {
+            flex: 1; position: relative; width: 100%; height: 100%; overflow: hidden;
+        }
+        .panel-presets .panel-content { overflow: visible; }
+        .panel-oct { grid-area: oct; }
+        .panel-model { grid-area: model; }
+        .panel-vibrato { grid-area: vibrato; }
+        .panel-rotary { grid-area: rotary; }
+        .panel-presets { grid-area: presets; }
+        .panel-drawbars { grid-area: drawbars; }
+        .panel-eq { grid-area: eq; }
+        .panel-drive { grid-area: drive; }
+        .panel-reverb { grid-area: reverb; }
+        .master-toggle {
+            background: #1a1f2b; border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-sub); font-size: 7px; font-weight: 800;
+            padding: 1px 4px; border-radius: 4px; cursor: pointer;
+            transition: all 0.2s; display: flex; align-items: center; gap: 3px;
+        }
+        .master-toggle.active {
+            color: var(--text-main); border-color: var(--accent-blue);
+            background: rgba(143, 178, 232, 0.1);
+        }
+        .master-toggle .dot { width: 3px; height: 3px; border-radius: 50%; background: #2a3141; }
+        .master-toggle.active .dot { background: var(--accent-blue); box-shadow: 0 0 4px var(--accent-blue); }
+
+        /* OCT */
+        .oct-container {
+            display: flex; align-items: center; justify-content: center;
+            gap: 6px; width: 100%; height: 100%; padding: 14px 6px 4px 6px;
+        }
+        .oct-btn {
+            width: 36px; height: 34px;
+            background: linear-gradient(180deg, #363e50, #252c3a);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 5px; color: var(--text-main);
+            font-size: 18px; font-weight: 900; cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+            transition: all 0.1s ease;
+            display: flex; align-items: center; justify-content: center;
+            flex: none; line-height: 1;
+        }
+        .oct-btn:active { transform: translateY(2px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.7); }
+        .oct-display {
+            min-width: 48px; height: 34px;
+            background: linear-gradient(180deg, #050a14, #020610);
+            border-radius: 5px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 17px; font-weight: 700; color: var(--accent-blue-soft);
+            text-shadow: 0 0 8px rgba(143,178,232,0.7), 0 0 2px rgba(168,197,240,0.9);
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
+            border: 1px solid rgba(143,178,232,0.08);
+            letter-spacing: 1px; position: relative; overflow: hidden;
+        }
+        .oct-display::before {
+            content: ""; position: absolute; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.4) 3px);
+            pointer-events: none;
+        }
+
+        /* PRESET */
+        .preset-container {
+            position: absolute; inset: 0;
+            padding: 22px 4px 4px 4px;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        .preset-top-bar {
+            position: absolute; top: 1px; right: 2px;
+            display: flex; align-items: center; gap: 3px; z-index: 20;
+        }
+        .preset-save-btn {
+            height: 18px; padding: 0 8px;
+            background: linear-gradient(180deg, #363e50, #252c3a);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 3px; color: var(--accent-blue-soft);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 7px; font-weight: 700; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            line-height: 1; letter-spacing: 0.6px; text-transform: uppercase;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            transition: all 0.1s ease;
+            text-shadow: 0 0 4px rgba(143,178,232,0.4);
+        }
+        .preset-save-btn:active { transform: translateY(1px); box-shadow: inset 0 2px 3px rgba(0,0,0,0.6); }
+        .preset-save-btn.disabled { opacity: 0.3; pointer-events: none; color: var(--text-sub); text-shadow: none; }
+        .preset-mode-toggle {
+            display: flex; background: #0b0e14;
+            border-radius: 10px; padding: 1.5px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .mode-option {
+            padding: 3px 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 7.5px; font-weight: 700;
+            color: var(--text-sub); cursor: pointer;
+            border-radius: 8px; text-transform: uppercase;
+            letter-spacing: 0.6px; transition: all 0.2s; line-height: 1;
+        }
+        .mode-option.active {
+            background: linear-gradient(180deg, #363e50, #252c3a);
+            color: var(--accent-blue-soft);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            text-shadow: 0 0 4px rgba(143,178,232,0.5);
+        }
+        .preset-display-wrap { position: relative; width: 100%; height: 34px; }
+        .preset-display-row { width: 100%; height: 100%; display: flex; align-items: stretch; gap: 3px; }
+        .preset-nav {
+            width: 18px;
+            background: linear-gradient(180deg, #363e50, #252c3a);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px; color: var(--text-sub);
+            font-size: 9px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+            flex: none; transition: all 0.1s ease; padding: 0;
+        }
+        .preset-nav:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.7); }
+        .preset-display {
+            flex: 1; min-width: 0;
+            background: linear-gradient(180deg, #030812, #010306);
+            border-radius: 4px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.04);
+            border: 1px solid rgba(143,178,232,0.1);
+            position: relative; overflow: hidden; gap: 1px; cursor: pointer;
+            transition: filter 0.15s, box-shadow 0.3s;
+        }
+        .preset-display:hover { filter: brightness(1.15); }
+        .preset-display:active { filter: brightness(0.95); }
+        .preset-display::before {
+            content: ""; position: absolute; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 1.5px, rgba(0,0,0,0.35) 2px);
+            pointer-events: none; z-index: 2;
+        }
+        .preset-display::after {
+            content: ""; position: absolute;
+            top: 3px; left: 3px;
+            width: 2.5px; height: 2.5px; border-radius: 50%;
+            background: var(--accent-blue); box-shadow: 0 0 4px var(--accent-blue); z-index: 3;
+        }
+        .preset-display.flash { animation: flashBlue 0.55s ease; }
+        @keyframes flashBlue {
+            0%, 100% { box-shadow: inset 0 2px 6px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.04); }
+            50% { box-shadow: inset 0 2px 6px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.04), 0 0 20px rgba(143,178,232,0.6), inset 0 0 12px rgba(143,178,232,0.3); }
+        }
+        .preset-name {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px; font-weight: 700; color: var(--accent-blue-soft);
+            text-shadow: 0 0 6px rgba(143,178,232,0.6), 0 0 2px rgba(168,197,240,0.8);
+            letter-spacing: 0.6px; text-transform: uppercase;
+            z-index: 1; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; max-width: 95%; padding: 0 4px; line-height: 1.1;
+        }
+        .preset-name-input {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px; font-weight: 700; color: var(--accent-blue-soft);
+            text-shadow: 0 0 6px rgba(143,178,232,0.6), 0 0 2px rgba(168,197,240,0.8);
+            letter-spacing: 0.6px; text-transform: uppercase;
+            text-align: center; background: transparent;
+            border: none; outline: none; width: 95%; padding: 0 4px;
+            caret-color: var(--accent-blue-soft); z-index: 5; line-height: 1.1;
+        }
+        .preset-number {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 6.5px; font-weight: 500; color: rgba(143,178,232,0.5);
+            text-shadow: 0 0 3px rgba(143,178,232,0.3);
+            letter-spacing: 1.2px; z-index: 1; line-height: 1;
+        }
+        .preset-chevron {
+            position: absolute; bottom: 1px; right: 3px;
+            font-size: 5px; color: rgba(143,178,232,0.4);
+            z-index: 3; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .preset-chevron.open { transform: rotate(180deg); }
+        .preset-dropdown {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+            max-height: 180px; overflow-y: auto;
+            background: linear-gradient(180deg, #0f1620, #060a12);
+            border: 1px solid rgba(143,178,232,0.2);
+            border-radius: 6px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.05);
+            z-index: 100; padding: 4px;
+            opacity: 0; transform: translateY(-8px) scale(0.96);
+            transform-origin: top center; pointer-events: none;
+            transition: opacity 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .preset-dropdown.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        .preset-dropdown::-webkit-scrollbar { width: 3px; }
+        .preset-dropdown::-webkit-scrollbar-thumb { background: rgba(143,178,232,0.3); border-radius: 2px; }
+        .preset-item {
+            padding: 5px 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 8px; font-weight: 500; color: var(--text-sub);
+            cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+            border-radius: 3px; transition: all 0.15s; letter-spacing: 0.4px;
+        }
+        .preset-item:hover { background: rgba(143,178,232,0.1); color: var(--accent-blue-soft); }
+        .preset-item.active {
+            background: rgba(143,178,232,0.15); color: var(--accent-blue-soft);
+            font-weight: 700; text-shadow: 0 0 4px rgba(143,178,232,0.4);
+        }
+        .preset-item .num { font-family: 'IBM Plex Mono', monospace; font-size: 7px; opacity: 0.5; }
+
+        /* VIBRATO */
+        .vib-perc-container { position: absolute; inset: 0; display: flex; align-items: stretch; justify-content: space-between; gap: 6px; padding-top: 12px; }
+        .vib-group, .perc-group { display: flex; flex-direction: column; flex: 1; height: 100%; transition: opacity 0.3s, filter 0.3s; }
+        .vib-group.disabled, .perc-group.disabled { opacity: 0.25; filter: grayscale(1); pointer-events: none; }
+        .vib-buttons, .perc-buttons { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); gap: 3px; height: 100%; }
+        .perc-buttons { grid-template-columns: 1fr; }
+        .btn-toggle { background: linear-gradient(180deg, #2a3141 0%, #1a1f2b 100%); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; color: var(--text-sub); font-size: 8px; font-weight: 800; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.4); transition: all 0.1s ease; width: 100%; height: 100%; padding: 0; }
+        .btn-toggle:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6); }
+        .btn-toggle.active { background: linear-gradient(180deg, #363e50 0%, #252c3a 100%); color: var(--text-main); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.3); }
+        .btn-led { width: 4px; height: 4px; border-radius: 50%; background: #2a3141; box-shadow: inset 0 1px 2px rgba(0,0,0,0.8); transition: all 0.2s; flex: none; }
+        .btn-toggle.active .btn-led { background: var(--accent-blue); box-shadow: 0 0 5px var(--accent-blue); }
+
+        /* ROTARY */
+        .rotary-container {
+            position: absolute; inset: 0;
+            padding: 16px 6px 4px 6px;
+            display: grid; grid-template-columns: 1.1fr 1fr;
+            grid-template-rows: 1fr auto;
+            column-gap: 8px; row-gap: 2px; z-index: 1;
+        }
+        .cabinet-tiny {
+            position: absolute; top: 2px; right: 2px;
+            background: #1a1f2b;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 3px; color: var(--text-sub);
+            font-size: 6px; font-weight: 800;
+            padding: 0 5px; height: 12px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            letter-spacing: 0.4px; transition: all 0.2s; z-index: 15;
+        }
+        .cabinet-tiny.active {
+            color: #ef4444;
+            border-color: rgba(239,68,68,0.5);
+            text-shadow: 0 0 3px rgba(239,68,68,0.6);
+        }
+        .rotary-knobs-stack { display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+        .knob-item { display: flex; align-items: center; gap: 10px; }
+        .knob-info { display: flex; flex-direction: column; gap: 2px; }
+        .rotary-label { font-size: 8px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.4px; line-height: 1; }
+        .rotary-value { font-size: 9px; font-weight: 700; color: var(--accent-blue); font-family: 'IBM Plex Mono', monospace; line-height: 1; }
+        .rotary-sliders-section { display: flex; flex-direction: column; align-items: center; height: 100%; gap: 4px; }
+        .speed-btn {
+            background: linear-gradient(180deg, #363e50, #252c3a);
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;
+            color: var(--text-sub); font-size: 8px; font-weight: 800;
+            width: 74px; height: 22px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            letter-spacing: 0.6px;
+            box-shadow: 0 2px 3px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+            transition: all 0.15s ease; margin-bottom: 2px;
+        }
+        .speed-btn:active { transform: translateY(1px); }
+        .speed-btn.active { color: var(--text-main); background: linear-gradient(180deg, #2a3141, #1a1f2b); box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.7); border-color: rgba(255,255,255,0.1); }
+        .speed-led { width: 5px; height: 5px; border-radius: 50%; background: #111; box-shadow: inset 0 1px 2px rgba(0,0,0,0.8); transition: all 0.2s; flex: none; }
+        .speed-btn.active .speed-led { background: #4ade80; box-shadow: 0 0 4px #4ade80; }
+        .sliders-row { flex: 1; display: flex; gap: 14px; width: 100%; justify-content: center; align-items: stretch; padding-bottom: 4px; }
+        .slider-labels { display: flex; gap: 14px; padding-bottom: 2px; }
+        .slider-labels span { width: 18px; text-align: center; font-size: 6px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.3px; }
+        .fader-wrapper { position: relative; width: 13px; height: 100%; cursor: ns-resize; touch-action: none; display: flex; justify-content: center; }
+        .fader-rail { position: absolute; top: 0; bottom: 0; left: 0; right: 0; background: linear-gradient(to bottom, #2D3041, #373A4B, #474A63); border-radius: 4px 5px 5px 4px; box-shadow: inset 1px 0 0 rgba(255,255,255,0.07), inset -1px 0 0 rgba(0,0,0,0.16), 0 2px 4px rgba(0,0,0,0.5); overflow: hidden; }
+        .fader-groove { position: absolute; top: 8px; bottom: 8px; left: 50%; transform: translateX(-50%); width: 3px; background: rgba(0,0,0,0.6); border-radius: 1.5px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.1); }
+        .fader-fill { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 3px; background: var(--accent-blue); border-radius: 1.5px; height: 0%; box-shadow: 0 0 6px var(--accent-blue); }
+        .fader-thumb { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: 20px; height: 26px; background: linear-gradient(to bottom, #595E72, #4E5067, #2E3040); border-radius: 2px 2px 3px 3px; box-shadow: 0 4px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2); z-index: 2; cursor: ns-resize; }
+        .fader-thumb::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to right, rgba(255,255,255,0.1) 0%, transparent 10%, transparent 90%, rgba(0,0,0,0.3) 100%); pointer-events: none; }
+        .fader-led-bar { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 2px; background: var(--accent-blue); border-radius: 1px; box-shadow: 0 0 6px var(--accent-blue); }
+        .rotary-balance-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; height: 16px; padding-top: 2px; }
+        .balance-label { font-size: 6px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+        .h-fader-wrapper { position: relative; flex: 1; height: 13px; cursor: ew-resize; touch-action: none; display: flex; align-items: center; }
+        .h-fader-rail { position: absolute; top: 0; bottom: 0; left: 0; right: 0; background: linear-gradient(to right, #2D3041, #373A4B, #474A63); border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.16), 0 2px 4px rgba(0,0,0,0.5); }
+        .h-fader-groove { position: absolute; left: 8px; right: 8px; top: 50%; transform: translateY(-50%); height: 3px; background: rgba(0,0,0,0.6); border-radius: 1.5px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.1); }
+        .h-fader-fill { position: absolute; top: 50%; transform: translateY(-50%); height: 3px; background: var(--accent-blue); border-radius: 1.5px; box-shadow: 0 0 6px var(--accent-blue); }
+        .h-fader-thumb { position: absolute; top: 50%; transform: translateY(-50%); left: 8px; width: 22px; height: 18px; background: linear-gradient(to right, #595E72, #4E5067, #2E3040); border-radius: 2px; box-shadow: 0 4px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2); z-index: 2; cursor: ew-resize; }
+        .h-fader-thumb::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, transparent 10%, transparent 90%, rgba(0,0,0,0.3) 100%); pointer-events: none; }
+        .h-fader-led-bar { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 60%; background: var(--accent-blue); border-radius: 1px; box-shadow: 0 0 6px var(--accent-blue); }
+
+        /* DRAWBARS */
+        .drawbars-container {
+            position: absolute; top: 22px; bottom: 8px; left: 8px; right: 8px;
+            display: flex; flex-direction: column; gap: 4px;
+        }
+        .shared-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+        .groups-row { flex: none; height: 18px; }
+        .group-cell {
+            display: flex; align-items: flex-end; justify-content: center;
+            padding: 0 0 4px 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 8px; font-weight: 700; color: #A0AABF;
+            text-transform: uppercase; letter-spacing: 0.3px;
+            white-space: nowrap; position: relative; opacity: 0.9;
+        }
+        .group-cell::after {
+            content: ""; position: absolute; bottom: 0; left: 8px; right: 0;
+            height: 1px; background: rgba(143,178,232,0.2);
+        }
+        .group-cell.span-2 { grid-column: span 2; }
+        .drawbars-row { flex: 1; min-height: 0; }
+        .drawbar-unit {
+            display: flex; gap: 0; position: relative;
+            min-width: 0; height: 100%; cursor: ns-resize;
+            touch-action: none; overflow: visible;
+        }
+        .db-numbers {
+            width: 8px; flex: none; position: relative; height: 100%;
+            pointer-events: none; z-index: 6;
+        }
+        .db-numbers span {
+            position: absolute; left: 0; right: 0; text-align: center;
+            transform: translateY(-50%);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 8px; font-weight: 700; color: rgba(143,178,232,0.85);
+            line-height: 1; text-shadow: 0 0 2px rgba(0,0,0,0.9);
+        }
+        .db-numbers span:nth-child(1) { top: 20%; }
+        .db-numbers span:nth-child(2) { top: 30%; }
+        .db-numbers span:nth-child(3) { top: 40%; }
+        .db-numbers span:nth-child(4) { top: 50%; }
+        .db-numbers span:nth-child(5) { top: 60%; }
+        .db-numbers span:nth-child(6) { top: 70%; }
+        .db-numbers span:nth-child(7) { top: 80%; }
+        .db-numbers span:nth-child(8) { top: 90%; }
+        .db-rail {
+            flex: 1; min-width: 0; position: relative; height: 100%;
+            background: linear-gradient(180deg, #14192a 0%, #282F45 50%, #14192a 100%);
+            border-radius: 3px;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.85), inset 0 -1px 0 rgba(255,255,255,0.04), 0 1px 0 rgba(255,255,255,0.04);
+            z-index: 1;
+        }
+        .db-rail::before {
+            content: ""; position: absolute; top: 10px; bottom: 10px;
+            left: 50%; transform: translateX(-50%); width: 4px;
+            background: rgba(0,0,0,0.75); border-radius: 2px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,1), 0 1px 0 rgba(255,255,255,0.06);
+            pointer-events: none;
+        }
+        .db-rail::after {
+            content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px;
+            background: repeating-linear-gradient(to bottom, transparent 0%, transparent calc(12.5% - 0.5px), rgba(143,178,232,0.35) calc(12.5% - 0.5px), rgba(143,178,232,0.35) 12.5%);
+            pointer-events: none;
+        }
+        .db-thumb {
+            position: absolute; left: calc(50% + 4px); transform: translateX(-50%);
+            width: 30px; height: 46px; cursor: grab; z-index: 5; pointer-events: auto;
+            filter: drop-shadow(0 3px 5px rgba(0,0,0,0.55));
+        }
+        .db-thumb:active { cursor: grabbing; }
+        .db-thumb svg { width: 100%; height: 100%; display: block; }
+        .foots-row { flex: none; height: 22px; }
+        .foot-cell {
+            display: flex; align-items: center; justify-content: center;
+            padding-left: 8px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px; font-weight: 700; color: #A0AABF;
+            letter-spacing: 0.3px; white-space: nowrap; opacity: 0.95;
+        }
+
+        /* MODEL */
+        .model-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 6px; }
+        .rotary-switch-area { position: relative; width: 46px; height: 46px; display: flex; justify-content: center; align-items: center; }
+        .model-scale-svg { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); pointer-events: none; z-index: 0; }
+        .model-scale-svg .tick { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.5; stroke-linecap: round; }
+        .model-scale-svg .label { fill: #FFFFFF; font-family: 'Inter', sans-serif; font-weight: 900; font-size: 7.5px; text-anchor: middle; dominant-baseline: central; }
+        .rotary-switch { position: relative; width: 100%; height: 100%; border-radius: 50%; background: #111; background-image: repeating-conic-gradient(#1a1a1a 0deg 10deg, #050505 10deg 20deg); box-shadow: inset 0 0 4px rgba(0,0,0,1), 0 2px 4px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05); cursor: ns-resize; touch-action: none; display: flex; justify-content: center; z-index: 1; transform: rotate(var(--knob-rotation, -135deg)); }
+        .rotary-switch::after { content: ""; position: absolute; inset: 25%; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #333 0%, #111 60%, #000 100%); box-shadow: inset 1px 1px 2px rgba(255,255,255,0.1), inset -1px -1px 2px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.9); }
+        .rotary-indicator { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); width: 3px; height: 11px; background: #fff; border-radius: 1px; box-shadow: 0 0 3px rgba(255,255,255,0.7); z-index: 2; }
+        .model-right-column { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; }
+        .led-group { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+        .led-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+        .model-led-item { width: 5px; height: 5px; border-radius: 50%; background: #2a3141; box-shadow: inset 0 1px 1px rgba(0,0,0,0.8); transition: all 0.2s; flex: none; }
+        .model-led-item.active { background: #ff4a4a; box-shadow: 0 0 6px #ff4a4a; }
+        .led-label { font-size: 6px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; }
+        .led-row.active .led-label { color: var(--text-main); opacity: 1; }
+        .toggle-switch { position: relative; width: 44px; height: 18px; background: #050505; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.1); cursor: pointer; display: flex; align-items: center; }
+        .toggle-handle { position: absolute; left: 2px; width: 14px; height: 14px; background: linear-gradient(180deg, #555, #111); border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.8); transition: transform 0.2s cubic-bezier(0.3, 1.5, 0.5, 1); }
+        .toggle-switch[data-pos="B3"] .toggle-handle { transform: translateX(0); }
+        .toggle-switch[data-pos="Pipe"] .toggle-handle { transform: translateX(13px); }
+        .toggle-switch[data-pos="Farf"] .toggle-handle { transform: translateX(26px); }
+
+        /* EQ / DRIVE / REVERB */
+        .eq-container { position: absolute; inset: 0; display: flex; justify-content: space-evenly; align-items: center; }
+        .eq-channel { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .eq-label { font-size: 8px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; margin-top: 2px; }
+        .eq-value { font-size: 9px; font-weight: 700; color: var(--text-main); font-family: monospace; background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px; min-width: 26px; text-align: center; }
+        .drive-container { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .drive-visual { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 84px; height: 84px; display: flex; justify-content: center; align-items: center; }
+        .drive-scale { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+        .drive-scale .tick-major { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1.5; stroke-linecap: round; }
+        .drive-scale .scale-label { fill: var(--text-sub); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 6.5px; text-anchor: middle; dominant-baseline: central; }
+        .drive-info { position: absolute; bottom: 2px; width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+        .drive-label { font-size: 8px; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.8px; }
+        .drive-value { font-size: 9px; font-weight: 800; color: var(--accent-blue); font-family: monospace; }
+        .reverb-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; gap: 14px; }
+        .reverb-knob-section { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .reverb-switch-section { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 85px; transform: translateY(-4px); }
+        .segmented-control { display: flex; flex-direction: column; background: #0b0e14; border-radius: 6px; padding: 2px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 1px 1px rgba(255,255,255,0.05); width: 100%; border: 1px solid rgba(255,255,255,0.05); }
+        .segmented-control button { background: transparent; border: none; color: var(--text-sub); font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 4px 0; cursor: pointer; border-radius: 4px; transition: all 0.2s; font-family: inherit; letter-spacing: 0.5px; }
+        .segmented-control button.active { background: linear-gradient(180deg, #363e50, #252c3a); color: var(--text-main); box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1); }
+
+        /* KNOBS */
+        .knob-wrapper { position: relative; width: var(--knob-size); height: var(--knob-size); display: flex; justify-content: center; align-items: center; border-radius: 50%; cursor: ns-resize; touch-action: none; z-index: 1; }
+        .knob-base { position: absolute; inset: 0; border-radius: 50%; background: linear-gradient(135deg, #363e50 0%, #171b24 100%); box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.9), 0 2px 4px rgba(0, 0, 0, 0.5); }
+        .knob-groove { position: absolute; inset: 2px; border-radius: 50%; background: #090b10; box-shadow: inset 0 3px 6px rgba(0, 0, 0, 1), 0 1px 1px rgba(255, 255, 255, 0.08); }
+        .knob-cap { position: absolute; inset: 6px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #5a657d 0%, #2a3141 45%, #151a24 85%, #0a0d13 100%); box-shadow: inset -2px -2px 4px rgba(0, 0, 0, 0.8), inset 2px 2px 4px rgba(255, 255, 255, 0.1), 0 4px 8px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.4); z-index: 2; display: flex; justify-content: center; }
+        .knob-cap::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"); pointer-events: none; }
+        .knob-specular { position: absolute; top: 12%; left: 18%; width: 28%; height: 18%; background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 70%); border-radius: 50%; transform: rotate(-40deg); pointer-events: none; z-index: 3; }
+        .knob-indicator-container { position: absolute; inset: 6px; border-radius: 50%; z-index: 4; transform: rotate(var(--knob-rotation, 0deg)); pointer-events: none; }
+        .knob-indicator { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 2px; height: 8px; border-radius: 1px; background: var(--accent-blue); }
+        .knob-value-arc { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px); transform: rotate(135deg); pointer-events: none; z-index: 1; }
+        .arc-track { fill: none; stroke: rgba(255, 255, 255, 0.04); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 197.9 263.89; }
+        .arc-fill { fill: none; stroke: var(--accent-blue); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 197.9 263.89; filter: drop-shadow(0 0 2px var(--accent-glow)); transition: stroke-dashoffset 0.05s linear; }
+
+        /* VIRTUAL KEYBOARD */
+        .keyboard-viewport {
+            width: 891px; max-width: 100%;
+            height: 120px;
+            margin-top: 16px;
+            background: #0a0d14;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 6px;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.4);
+            display: flex;
+            gap: 2px;
+            flex: none;
+        }
+        .key-white {
+            flex: 1;
+            background: linear-gradient(180deg, #f0f0f0, #d0d0d0);
+            border: 1px solid #888;
+            border-radius: 0 0 4px 4px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.05s;
+            box-shadow: inset 0 -2px 4px rgba(0,0,0,0.2);
+            min-width: 20px;
+        }
+        .key-white.active { background: linear-gradient(180deg, #a0c0f0, #7090c0); }
+        .key-white.pressed { background: linear-gradient(180deg, #a0c0f0, #7090c0); }
+        .key-black {
+            flex: 1;
+            background: linear-gradient(180deg, #333, #111);
+            border: 1px solid #000;
+            border-radius: 0 0 3px 3px;
+            cursor: pointer;
+            position: relative;
+            z-index: 2;
+            margin: 0 -8px;
+            max-width: 24px;
+            transition: background 0.05s;
+            box-shadow: inset 0 -2px 4px rgba(0,0,0,0.6);
+        }
+        .key-black.active { background: linear-gradient(180deg, #6090c0, #305070); }
+        .key-black.pressed { background: linear-gradient(180deg, #6090c0, #305070); }
+    </style>
+</head>
+<body>
+
+    <div class="preview-viewport" id="previewViewport">
+        <div class="phone-mockup" id="phoneMockup">
+            <div class="organ-app">
+                
+                <div class="panel panel-oct">
+                    <div class="panel-header"><div class="panel-title">Oct +/-</div></div>
+                    <div class="panel-content">
+                        <div class="oct-container">
+                            <button class="oct-btn" onclick="changeOct(-1)">−</button>
+                            <div class="oct-display" id="octDisplay">0</div>
+                            <button class="oct-btn" onclick="changeOct(1)">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-vibrato">
+                    <div class="panel-header split-header">
+                        <div class="title-section">
+                            <div class="panel-title">Vibrato</div>
+                            <button class="master-toggle active" onclick="toggleMaster(this, 'vib')"><div class="dot"></div> ON</button>
+                        </div>
+                        <div class="title-section">
+                            <div class="panel-title">B3 Perc</div>
+                            <button class="master-toggle active" onclick="toggleMaster(this, 'perc')"><div class="dot"></div> ON</button>
+                        </div>
+                    </div>
+                    <div class="panel-content">
+                        <div class="vib-perc-container">
+                            <div class="vib-group" id="vib-group">
+                                <div class="vib-buttons">
+                                    <button class="btn-toggle active" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>V1</button>
+                                    <button class="btn-toggle" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>C1</button>
+                                    <button class="btn-toggle" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>V2</button>
+                                    <button class="btn-toggle" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>C2</button>
+                                    <button class="btn-toggle" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>V3</button>
+                                    <button class="btn-toggle" onclick="selectExclusiveVibrato(this)"><div class="btn-led"></div>C3</button>
+                                </div>
+                            </div>
+                            <div class="perc-group" id="perc-group">
+                                <div class="perc-buttons">
+                                    <button class="btn-toggle" onclick="toggleButton(this)"><div class="btn-led"></div>Soft</button>
+                                    <button class="btn-toggle" onclick="toggleButton(this)"><div class="btn-led"></div>Fast</button>
+                                    <button class="btn-toggle" onclick="toggleButton(this)"><div class="btn-led"></div>Third</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-rotary">
+                    <div class="panel-header"><div class="panel-title">Rotary</div></div>
+                    <div class="panel-content">
+                        <div class="rotary-container">
+                            <button class="cabinet-tiny active" id="btn-cabinet" onclick="toggleCabinet(this)">ON</button>
+                            <div class="rotary-knobs-stack">
+                                <div class="knob-item">
+                                    <div class="knob-wrapper" data-value="30" style="--knob-size: 52px;">
+                                        <div class="knob-base"></div><div class="knob-groove"></div>
+                                        <svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg>
+                                        <div class="knob-cap"><div class="knob-specular"></div></div>
+                                        <div class="knob-indicator-container"><div class="knob-indicator"></div></div>
+                                    </div>
+                                    <div class="knob-info"><span class="rotary-label">Rise</span><span class="rotary-value">0.3s</span></div>
+                                </div>
+                                <div class="knob-item">
+                                    <div class="knob-wrapper" data-value="40" style="--knob-size: 52px;">
+                                        <div class="knob-base"></div><div class="knob-groove"></div>
+                                        <svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg>
+                                        <div class="knob-cap"><div class="knob-specular"></div></div>
+                                        <div class="knob-indicator-container"><div class="knob-indicator"></div></div>
+                                    </div>
+                                    <div class="knob-info"><span class="rotary-label">Fall</span><span class="rotary-value">0.4s</span></div>
+                                </div>
+                            </div>
+                            <div class="rotary-sliders-section">
+                                <button class="speed-btn active" id="btn-speed" onclick="toggleSpeed(this)">
+                                    <div class="speed-led" id="led-speed"></div> FAST
+                                </button>
+                                <div class="sliders-row">
+                                    <div class="fader-wrapper" data-value="80">
+                                        <div class="fader-rail"><div class="fader-groove"></div><div class="fader-fill"></div></div>
+                                        <div class="fader-thumb"><div class="fader-led-bar"></div></div>
+                                    </div>
+                                    <div class="fader-wrapper" data-value="50">
+                                        <div class="fader-rail"><div class="fader-groove"></div><div class="fader-fill"></div></div>
+                                        <div class="fader-thumb"><div class="fader-led-bar"></div></div>
+                                    </div>
+                                </div>
+                                <div class="slider-labels"><span>Depth</span><span>Mic</span></div>
+                            </div>
+                            <div class="rotary-balance-row">
+                                <span class="balance-label">Horn / Drum</span>
+                                <div class="h-fader-wrapper" data-value="50">
+                                    <div class="h-fader-rail"><div class="h-fader-groove"></div><div class="h-fader-fill"></div></div>
+                                    <div class="h-fader-thumb"><div class="h-fader-led-bar"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-presets">
+                    <div class="panel-header"><div class="panel-title">Preset</div></div>
+                    <div class="panel-content">
+                        <div class="preset-container">
+                            <div class="preset-top-bar">
+                                <button class="preset-save-btn disabled" id="saveBtn" onclick="savePreset()">Save</button>
+                                <div class="preset-mode-toggle">
+                                    <span class="mode-option active" data-mode="factory" onclick="switchMode('factory')">FACTORY</span>
+                                    <span class="mode-option" data-mode="user" onclick="switchMode('user')">USER</span>
+                                </div>
+                            </div>
+                            <div class="preset-display-wrap">
+                                <div class="preset-display-row">
+                                    <button class="preset-nav" onclick="prevPreset()">◀</button>
+                                    <div class="preset-display" id="presetDisplay" onclick="toggleDropdown(event)" ondblclick="startEditingName()">
+                                        <div class="preset-name" id="presetName">Jazz Organ</div>
+                                        <div class="preset-number" id="presetNumber">01 / 12</div>
+                                        <div class="preset-chevron" id="presetChevron">▼</div>
+                                    </div>
+                                    <button class="preset-nav" onclick="nextPreset()">▶</button>
+                                </div>
+                                <div class="preset-dropdown" id="presetDropdown"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-drawbars">
+                    <div class="panel-header"><div class="panel-title">Drawbars</div></div>
+                    <div class="panel-content">
+                        <div class="drawbars-container">
+                            <div class="groups-row shared-grid">
+                                <div class="group-cell span-2">BASS16</div>
+                                <div class="group-cell">STR16</div>
+                                <div class="group-cell">FLUTES</div>
+                                <div class="group-cell">OBOES</div>
+                                <div class="group-cell">TRMPS</div>
+                                <div class="group-cell">STR8</div>
+                                <div class="group-cell">FLUTE4</div>
+                                <div class="group-cell">STR4</div>
+                            </div>
+                            <div class="drawbars-row shared-grid" id="drawbarsRow"></div>
+                            <div class="foots-row shared-grid">
+                                <div class="foot-cell">16'</div>
+                                <div class="foot-cell">5⅓'</div>
+                                <div class="foot-cell">8'</div>
+                                <div class="foot-cell">4'</div>
+                                <div class="foot-cell">2⅔'</div>
+                                <div class="foot-cell">2'</div>
+                                <div class="foot-cell">1⅗'</div>
+                                <div class="foot-cell">1⅓'</div>
+                                <div class="foot-cell">1'</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-model">
+                    <div class="panel-header"><div class="panel-title">Organ Model</div></div>
+                    <div class="panel-content">
+                        <div class="model-container">
+                            <div class="rotary-switch-area">
+                                <svg class="model-scale-svg" viewBox="0 0 100 100">
+                                    <g transform="translate(50, 50) rotate(-135)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(-108)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(-81)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(-54)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(-27)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(0)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(27)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(54)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(81)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(108)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <g transform="translate(50, 50) rotate(135)"><line class="tick" x1="0" y1="-40" x2="0" y2="-44"/></g>
+                                    <text class="label" x="16" y="80">0</text><text class="label" x="5" y="46">2</text><text class="label" x="28" y="14">4</text><text class="label" x="72" y="14">6</text><text class="label" x="95" y="46">8</text><text class="label" x="84" y="80">10</text>
+                                </svg>
+                                <div class="rotary-switch" id="model-rotary" data-value="50"><div class="rotary-indicator"></div></div>
+                            </div>
+                            <div class="model-right-column">
+                                <div class="led-group">
+                                    <div class="led-row active" id="row-b3"><span class="led-label">B3</span><div class="model-led-item active" id="led-b3"></div></div>
+                                    <div class="led-row" id="row-pipe"><span class="led-label">Pipe</span><div class="model-led-item" id="led-pipe"></div></div>
+                                    <div class="led-row" id="row-farf"><span class="led-label">Farf</span><div class="model-led-item" id="led-farf"></div></div>
+                                </div>
+                                <div class="toggle-switch" data-pos="B3" onclick="toggleModelSwitch(this)"><div class="toggle-handle"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-eq">
+                    <div class="panel-header"><div class="panel-title">EQ</div></div>
+                    <div class="panel-content">
+                        <div class="eq-container">
+                            <div class="eq-channel">
+                                <div class="knob-wrapper" data-value="50" style="--knob-size: 48px;"><div class="knob-base"></div><div class="knob-groove"></div><svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg><div class="knob-cap"><div class="knob-specular"></div></div><div class="knob-indicator-container"><div class="knob-indicator"></div></div></div>
+                                <span class="eq-label">Treble</span><span class="eq-value">0 dB</span>
+                            </div>
+                            <div class="eq-channel">
+                                <div class="knob-wrapper" data-value="50" style="--knob-size: 48px;"><div class="knob-base"></div><div class="knob-groove"></div><svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg><div class="knob-cap"><div class="knob-specular"></div></div><div class="knob-indicator-container"><div class="knob-indicator"></div></div></div>
+                                <span class="eq-label">Mid</span><span class="eq-value">0 dB</span>
+                            </div>
+                            <div class="eq-channel">
+                                <div class="knob-wrapper" data-value="50" style="--knob-size: 48px;"><div class="knob-base"></div><div class="knob-groove"></div><svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg><div class="knob-cap"><div class="knob-specular"></div></div><div class="knob-indicator-container"><div class="knob-indicator"></div></div></div>
+                                <span class="eq-label">Bass</span><span class="eq-value">0 dB</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-drive">
+                    <div class="panel-header"><div class="panel-title">Drive</div></div>
+                    <div class="panel-content">
+                        <div class="drive-container">
+                            <div class="drive-visual">
+                                <svg class="drive-scale" viewBox="0 0 100 100">
+                                    <g transform="translate(50, 50) rotate(-135)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <g transform="translate(50, 50) rotate(-81)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <g transform="translate(50, 50) rotate(-27)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <g transform="translate(50, 50) rotate(27)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <g transform="translate(50, 50) rotate(81)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <g transform="translate(50, 50) rotate(135)"><line class="tick-major" x1="0" y1="-33" x2="0" y2="-38"/></g>
+                                    <text class="scale-label" x="18.9" y="81.1">0</text><text class="scale-label" x="6.5" y="43.1">2</text><text class="scale-label" x="30.0" y="10.8">4</text><text class="scale-label" x="50" y="6">5</text><text class="scale-label" x="70.0" y="10.8">6</text><text class="scale-label" x="93.5" y="43.1">8</text><text class="scale-label" x="81.1" y="81.1">10</text>
+                                </svg>
+                                <div class="knob-wrapper" data-value="50" style="--knob-size: 56px;">
+                                    <div class="knob-base"></div><div class="knob-groove"></div>
+                                    <svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg>
+                                    <div class="knob-cap"><div class="knob-specular"></div></div>
+                                    <div class="knob-indicator-container"><div class="knob-indicator"></div></div>
+                                </div>
+                            </div>
+                            <div class="drive-info"><span class="drive-label">Amount</span><span class="drive-value">5.0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel panel-reverb">
+                    <div class="panel-header"><div class="panel-title">Reverb</div></div>
+                    <div class="panel-content">
+                        <div class="reverb-container">
+                            <div class="reverb-knob-section">
+                                <div class="knob-wrapper" data-value="30" style="--knob-size: 48px;">
+                                    <div class="knob-base"></div><div class="knob-groove"></div>
+                                    <svg class="knob-value-arc" viewBox="0 0 100 100"><circle class="arc-track" cx="50" cy="50" r="42"></circle><circle class="arc-fill" cx="50" cy="50" r="42"></circle></svg>
+                                    <div class="knob-cap"><div class="knob-specular"></div></div>
+                                    <div class="knob-indicator-container"><div class="knob-indicator"></div></div>
+                                </div>
+                                <span class="drive-label">Amount</span>
+                            </div>
+                            <div class="reverb-switch-section">
+                                <div class="reverb-led on"></div>
+                                <div class="segmented-control">
+                                    <button class="active" onclick="setReverbMode(this)">Room</button>
+                                    <button onclick="setReverbMode(this)">Stage</button>
+                                    <button onclick="setReverbMode(this)">Hall</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Clavier virtuel externe (hors interface) -->
+    <div class="keyboard-viewport" id="keyboard"></div>
+
+    <script>
+        /* ============================================================
+           AUDIO ENGINE (Web Audio API - reproduit fx_organ.h)
+           ============================================================ */
+        let audioCtx = null;
+        let masterGain = null;
+        let isAudioReady = false;
+
+        // État du moteur
+        const engine = {
+            upperDrawbars: [0,0,0,0,0,0,0,0,0],  // 16' 5⅓' 8' 4' 2⅔' 2' 1⅗' 1⅓' 1'
+            lowerDrawbars: [0,0,0,0,0,0,0,0,0],
+            percOn: false, percSoft: false, percFast: false, perc3rd: false,
+            vibType: 0, vibUpper: true, vibLower: true,
+            rotary: 1, // 0=stop, 0.5=slow, 1=fast
+            click: 0.3, tone: 0.55, drive: 0.4, space: 0.25, level: 0.8,
+            reverbMode: 0.5, treble: 0.5, cabinet: 0.5, amount: 0.5, velSense: 0.5,
+            octave: 0,
+            heldNotes: new Set(),
+        };
+
+        // Oscillateurs actifs par note
+        const activeVoices = new Map(); // note -> { oscillators: [], gainNode, filter }
+
+        function initAudio() {
+            if (isAudioReady) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.3;
+            masterGain.connect(audioCtx.destination);
+            isAudioReady = true;
+        }
+
+        // Table de sinus (approximation via Math.sin)
+        function sine(t) { return Math.sin(2 * Math.PI * t); }
+
+        // Fréquence d'une note MIDI
+        function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+        // Fold index (comme dans fx_organ.h)
+        function foldIndex(idx) {
+            while (idx > 108) idx -= 12;
+            while (idx < 0) idx += 12;
+            return idx;
+        }
+
+        // Offset des drawbars (demi-tons par rapport à la fondamentale)
+        const kOff = [-12, 7, 0, 12, 19, 24, 28, 31, 36];
+
+        // Amplitude d'un drawbar (3 dB par pas)
+        function drawAmp(d) { return 0.035 * Math.pow(10, -3 * (8 - d) / 20); }
+
+        // Démarrer une note
+        function noteOn(midiNote) {
+            initAudio();
+            if (activeVoices.has(midiNote)) return;
+
+            const isUpper = midiNote >= 60;
+            const db = isUpper ? engine.upperDrawbars : engine.lowerDrawbars;
+            const now = audioCtx.currentTime;
+
+            // Créer un gain node par note
+            const noteGain = audioCtx.createGain();
+            noteGain.gain.value = 0;
+            noteGain.connect(masterGain);
+
+            const oscillators = [];
+
+            // Créer les oscillateurs pour chaque drawbar actif
+            for (let j = 0; j < 9; j++) {
+                if (db[j] <= 0) continue;
+                if (isUpper && engine.percOn && j === 8) continue; // Percussion coupe le 1'
+
+                const wheelIndex = foldIndex(midiNote + kOff[j]);
+                const freq = midiToFreq(wheelIndex);
+                const osc = audioCtx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+
+                const g = audioCtx.createGain();
+                g.gain.value = drawAmp(db[j]);
+                osc.connect(g);
+                g.connect(noteGain);
+                osc.start(now);
+                oscillators.push({ osc, gain: g, wheelIndex });
+            }
+
+            // Percussion (2ème ou 3ème harmonique)
+            let percOsc = null;
+            if (isUpper && engine.percOn) {
+                const percWheel = foldIndex(midiNote + (engine.perc3rd ? 19 : 12));
+                const percFreq = midiToFreq(percWheel);
+                percOsc = audioCtx.createOscillator();
+                percOsc.type = 'sine';
+                percOsc.frequency.value = percFreq;
+                const percGain = audioCtx.createGain();
+                percGain.gain.value = engine.percSoft ? 0.03 : 0.06;
+                percOsc.connect(percGain);
+                percGain.connect(noteGain);
+                percOsc.start(now);
+
+                // Enveloppe de percussion (décroissance)
+                const decay = engine.percFast ? 0.18 : 0.6;
+                percGain.gain.setValueAtTime(percGain.gain.value, now);
+                percGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+                percOsc.stop(now + decay + 0.1);
+            }
+
+            // Enveloppe d'attaque (click)
+            const attack = 0.004;
+            noteGain.gain.setValueAtTime(0, now);
+            noteGain.gain.linearRampToValueAtTime(1, now + attack);
+
+            activeVoices.set(midiNote, {
+                oscillators,
+                gainNode: noteGain,
+                percOsc,
+                startTime: now,
+            });
+        }
+
+        // Arrêter une note
+        function noteOff(midiNote) {
+            if (!activeVoices.has(midiNote)) return;
+            const voice = activeVoices.get(midiNote);
+            const now = audioCtx.currentTime;
+            const release = 0.05;
+
+            voice.gainNode.gain.cancelScheduledValues(now);
+            voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, now);
+            voice.gainNode.gain.exponentialRampToValueAtTime(0.001, now + release);
+
+            voice.oscillators.forEach(({ osc }) => {
+                try { osc.stop(now + release + 0.05); } catch(e) {}
+            });
+            if (voice.percOsc) {
+                try { voice.percOsc.stop(now + release + 0.05); } catch(e) {}
+            }
+
+            setTimeout(() => {
+                voice.gainNode.disconnect();
+                activeVoices.delete(midiNote);
+            }, (release + 0.1) * 1000);
+        }
+
+        // Appliquer un preset au moteur et à l'UI
+        function applyPreset(preset) {
+            engine.upperDrawbars = [...preset.upper];
+            engine.lowerDrawbars = [...preset.lower];
+            engine.percOn = preset.perc.on;
+            engine.percSoft = preset.perc.soft;
+            engine.percFast = preset.perc.fast;
+            engine.perc3rd = preset.perc.third;
+            engine.vibType = preset.vib.type;
+            engine.vibUpper = preset.vib.upper;
+            engine.vibLower = preset.vib.lower;
+            engine.rotary = preset.rotary;
+            engine.click = preset.click;
+            engine.tone = preset.tone;
+            engine.drive = preset.drive;
+            engine.space = preset.space;
+            engine.level = preset.level;
+
+            // Mettre à jour les drawbars dans l'UI
+            const units = document.querySelectorAll('.drawbar-unit');
+            units.forEach((unit, idx) => {
+                const val = preset.upper[idx];
+                unit.dataset.value = val;
+                const thumb = unit.querySelector('.db-thumb');
+                thumb.style.transition = 'top 0.2s ease-out';
+                thumb.style.top = `${val * 10}%`;
+            });
+
+            // Mettre à jour les boutons Vibrato
+            const vibButtons = document.querySelectorAll('#vib-group .btn-toggle');
+            vibButtons.forEach((btn, idx) => {
+                btn.classList.toggle('active', idx === preset.vib.type);
+            });
+
+            // Mettre à jour les boutons Percussion
+            const percButtons = document.querySelectorAll('#perc-group .btn-toggle');
+            percButtons[0].classList.toggle('active', preset.perc.soft);
+            percButtons[1].classList.toggle('active', preset.perc.fast);
+            percButtons[2].classList.toggle('active', preset.perc.third);
+
+            // Mettre à jour le rotary
+            const speedBtn = document.getElementById('btn-speed');
+            speedBtn.classList.toggle('active', preset.rotary >= 1);
+            speedBtn.innerHTML = `<div class="speed-led ${preset.rotary >= 1 ? 'on' : ''}" id="led-speed"></div> ${preset.rotary >= 1 ? 'FAST' : 'SLOW'}`;
+
+            // Mettre à jour le cabinet
+            const cabinetBtn = document.getElementById('btn-cabinet');
+            cabinetBtn.classList.toggle('active', preset.cabinet !== false);
+            cabinetBtn.textContent = preset.cabinet !== false ? 'ON' : 'OFF';
+
+            // Mettre à jour les toggles master
+            document.getElementById('vib-group').classList.remove('disabled');
+            document.getElementById('perc-group').classList.remove('disabled');
+        }
+
+        /* ============================================================
+           PRESET DATA (réglages documentés Hammond B3)
+           ============================================================ */
+        const FACTORY_PRESETS = [
+            {
+                name: "Jazz Organ",
+                upper: [8,8,8,0,0,0,0,0,0],  // 888000000 - son jazz de base (Jimmy Smith)
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: true, soft: true, fast: true, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 0.5, click: 0.3, tone: 0.55, drive: 0.4, space: 0.25, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Rock B3",
+                upper: [8,8,8,8,8,8,8,8,8],  // 888888888 - son rock puissant
+                lower: [8,8,8,8,8,8,8,8,8],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 1, click: 0.4, tone: 0.6, drive: 0.7, space: 0.15, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Gospel",
+                upper: [8,0,8,8,0,8,0,0,8],  // 808808008 - son gospel classique
+                lower: [8,8,8,8,0,0,0,0,0],
+                perc: { on: true, soft: false, fast: true, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 1, click: 0.35, tone: 0.6, drive: 0.4, space: 0.3, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Blues",
+                upper: [8,8,8,0,0,0,0,0,0],  // 888000000 - blues de base
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: true, soft: true, fast: true, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 0.5, click: 0.3, tone: 0.5, drive: 0.35, space: 0.2, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Full Drawbars",
+                upper: [8,8,8,8,8,8,8,8,8],  // Tous à fond
+                lower: [8,8,8,8,8,8,8,8,8],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 1, click: 0.3, tone: 0.5, drive: 0.3, space: 0.2, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Perc Organ",
+                upper: [8,8,8,0,0,0,0,0,0],  // Jazz avec percussion accentuée
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: true, soft: false, fast: false, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 0.5, click: 0.4, tone: 0.55, drive: 0.4, space: 0.25, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Pipe Church",
+                upper: [0,0,8,8,0,0,0,0,5],  // 008800005 - son d'église (flûte)
+                lower: [0,0,8,0,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0, click: 0.1, tone: 0.4, drive: 0.1, space: 0.6, level: 0.8,
+                cabinet: false,
+            },
+            {
+                name: "Pipe Cathedral",
+                upper: [8,0,8,6,0,5,0,0,4],  // 808605004 - son cathédrale
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0, click: 0.1, tone: 0.35, drive: 0.1, space: 0.8, level: 0.8,
+                cabinet: false,
+            },
+            {
+                name: "Farf Jazz",
+                upper: [8,8,8,0,0,0,0,0,0],  // Jazz sur modèle Farfisa
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 1, upper: true, lower: true }, // V2
+                rotary: 0.5, click: 0.2, tone: 0.65, drive: 0.3, space: 0.2, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Farf Rock",
+                upper: [8,8,8,8,8,8,8,8,8],  // Rock sur Farfisa
+                lower: [8,8,8,8,8,8,8,8,8],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 1, upper: true, lower: true }, // V2
+                rotary: 1, click: 0.3, tone: 0.7, drive: 0.6, space: 0.15, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Full Organ",
+                upper: [8,8,8,8,8,0,0,0,0],  // 888800000 - orgue complet
+                lower: [8,8,8,8,8,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0.5, click: 0.25, tone: 0.5, drive: 0.25, space: 0.3, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Soft Strings",
+                upper: [0,0,8,8,8,0,0,5,0],  // 008880050 - cordes douces
+                lower: [0,0,8,8,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0, click: 0.1, tone: 0.4, drive: 0.15, space: 0.5, level: 0.8,
+                cabinet: false,
+            },
+            // 4 nouveaux presets fréquents
+            {
+                name: "Jazz Variation",
+                upper: [8,8,8,0,0,0,0,0,6],  // 888000060 - variation jazz
+                lower: [8,0,8,0,0,0,0,0,0],
+                perc: { on: true, soft: true, fast: true, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 0.5, click: 0.3, tone: 0.55, drive: 0.35, space: 0.25, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Church",
+                upper: [8,0,8,8,0,8,0,0,8],  // 808808008 - église
+                lower: [8,8,8,8,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0, click: 0.15, tone: 0.45, drive: 0.15, space: 0.7, level: 0.8,
+                cabinet: false,
+            },
+            {
+                name: "Gospel Shout",
+                upper: [8,8,8,8,0,8,0,0,8],  // 888808008 - gospel shout
+                lower: [8,8,8,8,8,8,8,8,8],
+                perc: { on: true, soft: false, fast: true, third: true },
+                vib: { type: 3, upper: true, lower: true }, // C3
+                rotary: 1, click: 0.4, tone: 0.6, drive: 0.5, space: 0.25, level: 0.8,
+                cabinet: true,
+            },
+            {
+                name: "Mellow Pad",
+                upper: [0,0,8,8,0,0,0,0,0],  // 008800000 - nappe douce
+                lower: [0,0,8,8,0,0,0,0,0],
+                perc: { on: false, soft: false, fast: false, third: false },
+                vib: { type: 0, upper: false, lower: false },
+                rotary: 0.5, click: 0.1, tone: 0.4, drive: 0.1, space: 0.5, level: 0.8,
+                cabinet: true,
+            },
+        ];
+
+        /* ============================================================
+           DRAWBARS UI (SVG thumbs)
+           ============================================================ */
+        const PAL = {
+            brown: { aTop:"#A4745A",aBot:"#945F44",band:"#BE8864",cTop:"#94603F",cBot:"#7C4A2D",dTop:"#5C3720",dMid:"#4A2A17",dBot:"#52301B",wL1:"#AA6C3C",wL2:"#7E4727",wR1:"#7B4A2C",wR2:"#5E3620",bL1:"#8A5530",bL2:"#6A3D20",bR1:"#6C4025",bR2:"#55321C",rimL:"#E2A266",rimR:"#9C6A42",ridge:"#C8946C",scLight:"#E8C0A0",scDark:"#3A1E0E",dust:"#F0D8C0" },
+            white: { aTop:"#F3EEDC",aBot:"#E3DCC4",band:"#FFFDF2",cTop:"#E6DFC8",cBot:"#CEC6AB",dTop:"#B9B197",dMid:"#A69E84",dBot:"#A8A086",wL1:"#F6F1E0",wL2:"#D8D0B6",wR1:"#CFC7AC",wR2:"#B4AC92",bL1:"#E4DCC4",bL2:"#C6BEA4",bR1:"#BDB59B",bR2:"#A59D84",rimL:"#FFFFFF",rimR:"#D9D2BA",ridge:"#FFFFFF",scLight:"#FFFFFF",scDark:"#6B6347",dust:"#FFFFFF" },
+            black: { aTop:"#4A4642",aBot:"#3C3835",band:"#6A645E",cTop:"#3A3633",cBot:"#2A2724",dTop:"#1E1B19",dMid:"#151311",dBot:"#1A1816",wL1:"#5A5550",wL2:"#34302D",wR1:"#302D2A",wR2:"#1F1D1B",bL1:"#3E3A37",bL2:"#272422",bR1:"#252220",bR2:"#181615",rimL:"#8C857D",rimR:"#4A4642",ridge:"#76706A",scLight:"#A8A19A",scDark:"#000000",dust:"#CFC8C0" }
+        };
+        const SIL = "M310,281 L700,281 Q705,281 705,286 L705,893 Q705,898 700,898 L310,898 Q305,898 305,893 L305,286 Q305,281 310,281 Z";
+        const FA = "M315,285 L695,285 L695,546 L315,546 Z";
+        const FC = "M315,546 L695,546 L695,654 L315,654 Z";
+        const FD = "M315,654 L695,654 L695,893 L315,893 Z";
+        const ARCS = [["M382,415 Q420,372 478,352",0.28,1.2],["M460,392 Q510,360 575,350",0.18,1.0],["M546,318 Q575,312 605,322",0.15,0.9],["M362,330 Q382,340 410,336",0.15,0.9]];
+        function rng(seed) { let s=seed; return () => (s = (s*16807)%2147483647)/2147483647; }
+        function texSVG(seed,x,y,w,h,light,dark,dust,l0,l1,p) {
+            const r = rng(seed); let out='';
+            const scratch = (col,a0,a1) => {
+                const sx=x+r()*w, sy=y+r()*h, len=l0+r()*(l1-l0);
+                const ang=((-50+r()*100)*Math.PI)/180, al=a0+r()*(a1-a0), sw=0.5+r()*0.8;
+                out += `<line x1="${sx.toFixed(2)}" y1="${sy.toFixed(2)}" x2="${(sx+Math.cos(ang)*len).toFixed(2)}" y2="${(sy+Math.sin(ang)*len).toFixed(2)}" stroke="${col}" stroke-opacity="${al.toFixed(3)}" stroke-width="${sw.toFixed(2)}"/>`;
+            };
+            for(let i=0;i<light;i++) scratch(p.scLight,0.08,0.22);
+            for(let i=0;i<dark;i++) scratch(p.scDark,0.08,0.18);
+            for(let i=0;i<dust;i++) {
+                const cx=x+r()*w, cy=y+r()*h, rad=0.6+r()*0.8, al=0.1+r()*0.2;
+                out += `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${rad.toFixed(2)}" fill="${p.dust}" opacity="${al.toFixed(3)}"/>`;
+            }
+            return out;
+        }
+        function buildThumbSVG(colorKey, uid) {
+            const p = PAL[colorKey], id = 'th'+uid;
+            return `<svg viewBox="305 281 400 617" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <clipPath id="${id}S"><path d="${SIL}"/></clipPath>
+                    <clipPath id="${id}A"><path d="${FA}"/></clipPath>
+                    <clipPath id="${id}C"><path d="${FC}"/></clipPath>
+                    <clipPath id="${id}D"><path d="${FD}"/></clipPath>
+                    <linearGradient id="${id}w" gradientUnits="userSpaceOnUse" x1="305" y1="0" x2="705" y2="0"><stop offset="0" stop-color="${p.wL1}"/><stop offset="0.15" stop-color="${p.wL2}"/><stop offset="0.85" stop-color="${p.wR1}"/><stop offset="1" stop-color="${p.wR2}"/></linearGradient>
+                    <linearGradient id="${id}b" gradientUnits="userSpaceOnUse" x1="305" y1="0" x2="705" y2="0"><stop offset="0" stop-color="${p.bL1}"/><stop offset="0.15" stop-color="${p.bL2}"/><stop offset="0.85" stop-color="${p.bR1}"/><stop offset="1" stop-color="${p.bR2}"/></linearGradient>
+                    <linearGradient id="${id}a1" gradientUnits="userSpaceOnUse" x1="0" y1="285" x2="0" y2="546"><stop offset="0" stop-color="${p.aTop}"/><stop offset="1" stop-color="${p.aBot}"/></linearGradient>
+                    <linearGradient id="${id}a2" gradientUnits="userSpaceOnUse" x1="315" y1="0" x2="695" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0.08"/><stop offset="1" stop-color="#000" stop-opacity="0.15"/></linearGradient>
+                    <radialGradient id="${id}a3" gradientUnits="userSpaceOnUse" cx="410" cy="340" r="220"><stop offset="0" stop-color="#fff" stop-opacity="0.18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+                    <radialGradient id="${id}a4" gradientUnits="userSpaceOnUse" cx="560" cy="410" r="70"><stop offset="0" stop-color="#000" stop-opacity="0.08"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+                    <linearGradient id="${id}a5" gradientUnits="userSpaceOnUse" x1="0" y1="440" x2="0" y2="546"><stop offset="0" stop-color="${p.band}" stop-opacity="0"/><stop offset="0.55" stop-color="${p.band}" stop-opacity="0.55"/><stop offset="1" stop-color="${p.band}" stop-opacity="0.35"/></linearGradient>
+                    <linearGradient id="${id}c1" gradientUnits="userSpaceOnUse" x1="0" y1="546" x2="0" y2="654"><stop offset="0" stop-color="${p.cTop}"/><stop offset="1" stop-color="${p.cBot}"/></linearGradient>
+                    <linearGradient id="${id}c2" gradientUnits="userSpaceOnUse" x1="315" y1="0" x2="695" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0.06"/><stop offset="1" stop-color="#000" stop-opacity="0.12"/></linearGradient>
+                    <linearGradient id="${id}d1" gradientUnits="userSpaceOnUse" x1="0" y1="654" x2="0" y2="893"><stop offset="0" stop-color="${p.dTop}"/><stop offset="0.38" stop-color="${p.dMid}"/><stop offset="1" stop-color="${p.dBot}"/></linearGradient>
+                    <linearGradient id="${id}d2" gradientUnits="userSpaceOnUse" x1="330" y1="660" x2="500" y2="800"><stop offset="0" stop-color="#fff" stop-opacity="0.13"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+                    <linearGradient id="${id}d3" gradientUnits="userSpaceOnUse" x1="315" y1="0" x2="695" y2="0"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.18"/></linearGradient>
+                </defs>
+                <g clip-path="url(#${id}S)">
+                    <rect x="305" y="281" width="400" height="617" fill="url(#${id}w)"/>
+                    <rect x="305" y="650" width="400" height="248" fill="url(#${id}b)" opacity="0.7"/>
+                    ${texSVG(11,305,281,400,617,30,10,40,5,20,p)}
+                    <path d="${FA}" fill="url(#${id}a1)"/><path d="${FA}" fill="url(#${id}a2)"/><path d="${FA}" fill="url(#${id}a3)"/><path d="${FA}" fill="url(#${id}a4)"/><path d="${FA}" fill="url(#${id}a5)"/>
+                    <g clip-path="url(#${id}A)">${texSVG(21,315,285,380,261,70,26,70,6,38,p)}${ARCS.map(([d,al,sw])=>`<path d="${d}" fill="none" stroke="${p.scLight}" stroke-opacity="${al}" stroke-width="${sw}"/>`).join('')}</g>
+                    <line x1="315" y1="285" x2="695" y2="285" stroke="${p.rimL}" stroke-opacity="0.6" stroke-width="1.8"/>
+                    <line x1="315" y1="286" x2="315" y2="546" stroke="${p.rimL}" stroke-opacity="0.55" stroke-width="1.8"/>
+                    <line x1="695" y1="286" x2="695" y2="546" stroke="${p.scDark}" stroke-opacity="0.5" stroke-width="1.8"/>
+                    <path d="${FC}" fill="url(#${id}c1)"/><path d="${FC}" fill="url(#${id}c2)"/>
+                    <g clip-path="url(#${id}C)">${texSVG(31,315,546,380,108,110,40,50,5,26,p)}</g>
+                    <line x1="320" y1="547" x2="690" y2="547" stroke="${p.ridge}" stroke-opacity="0.75" stroke-width="2"/>
+                    <line x1="315" y1="547" x2="315" y2="654" stroke="${p.rimL}" stroke-opacity="0.45" stroke-width="1.5"/>
+                    <line x1="695" y1="547" x2="695" y2="654" stroke="${p.scDark}" stroke-opacity="0.45" stroke-width="1.5"/>
+                    <path d="${FD}" fill="url(#${id}d1)"/><path d="${FD}" fill="url(#${id}d2)"/><path d="${FD}" fill="url(#${id}d3)"/>
+                    <g clip-path="url(#${id}D)">${texSVG(41,315,654,380,239,18,10,40,6,22,p)}</g>
+                    <line x1="320" y1="654" x2="690" y2="654" stroke="${p.ridge}" stroke-opacity="0.55" stroke-width="2.2"/>
+                    <line x1="315" y1="654" x2="315" y2="893" stroke="${p.rimL}" stroke-opacity="0.35" stroke-width="1.5"/>
+                    <line x1="695" y1="654" x2="695" y2="893" stroke="${p.scDark}" stroke-opacity="0.45" stroke-width="1.5"/>
+                    <line x1="315" y1="895" x2="695" y2="895" stroke="${p.rimL}" stroke-opacity="0.25" stroke-width="1.5"/>
+                </g>
+                <path d="${SIL}" fill="none" stroke="${p.scDark}" stroke-opacity="0.4" stroke-width="1.2"/>
+            </svg>`;
+        }
+
+        const THUMB_H = 46;
+        const DRAWBARS_COLORS = ['brown','brown','white','white','black','white','black','black','white'];
+        const drawbarsRow = document.getElementById('drawbarsRow');
+        const units = [];
+        DRAWBARS_COLORS.forEach((color, idx) => {
+            const unit = document.createElement('div');
+            unit.className = 'drawbar-unit';
+            unit.dataset.value = 0;
+            let numsHTML = '';
+            for (let i = 1; i <= 8; i++) numsHTML += `<span>${i}</span>`;
+            unit.innerHTML = `
+                <div class="db-numbers">${numsHTML}</div>
+                <div class="db-rail"></div>
+                <div class="db-thumb" style="top: 0%">${buildThumbSVG(color, idx)}</div>
+            `;
+            drawbarsRow.appendChild(unit);
+            units.push(unit);
+        });
+
+        // Interactions drawbars
+        units.forEach(unit => {
+            const rail = unit.querySelector('.db-rail');
+            const thumb = unit.querySelector('.db-thumb');
+            let isDragging = false;
+
+            function valueFromY(clientY) {
+                const rect = rail.getBoundingClientRect();
+                const travel = rect.height - THUMB_H;
+                const y = clientY - rect.top - THUMB_H / 2;
+                return Math.max(0, Math.min(1, y / travel));
+            }
+
+            unit.addEventListener('pointerdown', (e) => {
+                isDragging = true;
+                unit.setPointerCapture(e.pointerId);
+                const clickedThumb = e.target.closest('.db-thumb');
+                if (!clickedThumb) {
+                    const v = Math.round(valueFromY(e.clientY) * 8);
+                    unit.dataset.value = v;
+                    thumb.style.transition = 'top 0.15s ease-out';
+                    thumb.style.top = `${v * 10}%`;
+                    engine.upperDrawbars[units.indexOf(unit)] = v;
+                }
+            });
+
+            unit.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                const v01 = valueFromY(e.clientY);
+                const rect = rail.getBoundingClientRect();
+                const travel = rect.height - THUMB_H;
+                thumb.style.transition = 'none';
+                thumb.style.top = `${v01 * travel}px`;
+            });
+
+            const endDrag = (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                const v = Math.round(valueFromY(e.clientY) * 8);
+                unit.dataset.value = v;
+                thumb.style.transition = 'top 0.15s ease-out';
+                thumb.style.top = `${v * 10}%`;
+                engine.upperDrawbars[units.indexOf(unit)] = v;
+            };
+            unit.addEventListener('pointerup', endDrag);
+            unit.addEventListener('pointercancel', endDrag);
+        });
+
+        /* ============================================================
+           VIRTUAL KEYBOARD
+           ============================================================ */
+        const keyboardEl = document.getElementById('keyboard');
+        const WHITE_KEYS = ['C','D','E','F','G','A','B'];
+        const BLACK_KEYS = { 'C':'C#', 'D':'D#', 'F':'F#', 'G':'G#', 'A':'A#' };
+        const START_MIDI = 48; // C3
+
+        function buildKeyboard() {
+            const whiteKeys = [];
+            for (let oct = 0; oct < 2; oct++) {
+                for (let i = 0; i < 7; i++) {
+                    const noteName = WHITE_KEYS[i];
+                    const midi = START_MIDI + oct * 12 + [0,2,4,5,7,9,11][i];
+                    whiteKeys.push({ note: noteName, midi, isBlack: false, octave: oct });
+                    if (BLACK_KEYS[noteName] && i < 6) {
+                        whiteKeys.push({ note: noteName + '#', midi: midi + 1, isBlack: true, octave: oct });
+                    }
+                }
+            }
+
+            whiteKeys.forEach(key => {
+                const div = document.createElement('div');
+                div.className = key.isBlack ? 'key-black' : 'key-white';
+                div.dataset.midi = key.midi;
+                div.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    div.classList.add('active');
+                    noteOn(key.midi + engine.octave * 12);
+                });
+                div.addEventListener('pointerup', () => {
+                    div.classList.remove('active');
+                    noteOff(key.midi + engine.octave * 12);
+                });
+                div.addEventListener('pointerleave', () => {
+                    div.classList.remove('active');
+                    noteOff(key.midi + engine.octave * 12);
+                });
+                keyboardEl.appendChild(div);
+            });
+        }
+        buildKeyboard();
+
+        /* ============================================================
+           KNOBS
+           ============================================================ */
+        document.querySelectorAll('.knob-wrapper').forEach(wrapper => {
+            let isDragging = false, startY = 0, startValue = parseFloat(wrapper.dataset.value) || 50;
+            const arcFill = wrapper.querySelector('.arc-fill');
+            const eqValueLabel = wrapper.closest('.eq-channel')?.querySelector('.eq-value');
+            const driveValueLabel = wrapper.closest('.drive-container')?.querySelector('.drive-value');
+            const rotaryValueLabel = wrapper.closest('.knob-item')?.querySelector('.rotary-value');
+
+            function updateUI(value) {
+                wrapper.style.setProperty('--knob-rotation', `${-135 + (value / 100) * 270}deg`);
+                arcFill.style.strokeDashoffset = 197.9 - (value / 100) * 197.9;
+                if (eqValueLabel) eqValueLabel.textContent = `${((value / 100) * 24 - 12) > 0 ? '+' : ''}${Math.round((value / 100) * 24 - 12)} dB`;
+                if (driveValueLabel) driveValueLabel.textContent = (value / 10).toFixed(1);
+                if (rotaryValueLabel) { const s = (value / 20).toFixed(1); rotaryValueLabel.textContent = `${s}s`; }
+            }
+            updateUI(startValue);
+
+            wrapper.addEventListener('pointerdown', (e) => { isDragging = true; startY = e.clientY; wrapper.setPointerCapture(e.pointerId); });
+            wrapper.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                const nv = Math.max(0, Math.min(100, startValue + ((startY - e.clientY) / 1.5)));
+                wrapper.dataset.value = nv; updateUI(nv);
+                // Mettre à jour le moteur
+                if (wrapper.closest('.panel-eq')) engine.tone = nv / 100;
+                if (wrapper.closest('.panel-drive')) engine.drive = nv / 100;
+            });
+            const endDrag = () => { if (!isDragging) return; isDragging = false; startValue = parseFloat(wrapper.dataset.value); };
+            wrapper.addEventListener('pointerup', endDrag);
+            wrapper.addEventListener('pointercancel', endDrag);
+        });
+
+        /* ============================================================
+           PRESETS UI
+           ============================================================ */
+        let currentMode = 'factory';
+        let currentIndices = { factory: 0, user: 0 };
+        let customCounter = 2;
+        let isEditingName = false;
+        const USER_PRESETS = [
+            { name: "My Setup", upper: [8,8,8,0,0,0,0,0,0], lower: [8,0,8,0,0,0,0,0,0], perc: {on:false,soft:false,fast:false,third:false}, vib:{type:3,upper:true,lower:true}, rotary:0.5, click:0.3, tone:0.5, drive:0.3, space:0.2, level:0.8, cabinet:true },
+            { name: "Custom 1", upper: [8,8,8,8,0,0,0,0,0], lower: [8,8,8,0,0,0,0,0,0], perc: {on:true,soft:true,fast:true,third:true}, vib:{type:3,upper:true,lower:true}, rotary:1, click:0.3, tone:0.6, drive:0.4, space:0.3, level:0.8, cabinet:true },
+        ];
+
+        function getCurrentList() {
+            return currentMode === 'factory' ? FACTORY_PRESETS : USER_PRESETS;
+        }
+
+        function updatePresetDisplay() {
+            const list = getCurrentList();
+            const idx = currentIndices[currentMode];
+            const num = String(idx + 1).padStart(2, '0');
+            const tot = String(list.length).padStart(2, '0');
+            const nameEl = document.getElementById('presetName');
+            if (nameEl) nameEl.textContent = list[idx].name;
+            document.getElementById('presetNumber').textContent = `${num} / ${tot}`;
+            document.querySelectorAll('.mode-option').forEach(el => { el.classList.toggle('active', el.dataset.mode === currentMode); });
+            document.getElementById('saveBtn').classList.toggle('disabled', currentMode === 'factory');
+            const dd = document.getElementById('presetDropdown');
+            if (dd.classList.contains('open')) renderDropdown();
+            // Appliquer le preset au moteur
+            applyPreset(list[idx]);
+        }
+
+        function renderDropdown() {
+            const dd = document.getElementById('presetDropdown');
+            const list = getCurrentList();
+            const idx = currentIndices[currentMode];
+            dd.innerHTML = list.map((p, i) => `
+                <div class="preset-item ${i === idx ? 'active' : ''}" onclick="selectPreset(${i}); event.stopPropagation();">
+                    <span>${p.name}</span>
+                    <span class="num">${String(i+1).padStart(2, '0')}</span>
+                </div>
+            `).join('');
+        }
+
+        function toggleDropdown(e) {
+            if (isEditingName) return;
+            e.stopPropagation();
+            const dd = document.getElementById('presetDropdown');
+            const ch = document.getElementById('presetChevron');
+            if (dd.classList.contains('open')) closeDropdown();
+            else { renderDropdown(); dd.classList.add('open'); ch.classList.add('open'); }
+        }
+        function closeDropdown() {
+            document.getElementById('presetDropdown').classList.remove('open');
+            document.getElementById('presetChevron').classList.remove('open');
+        }
+        function selectPreset(idx) { currentIndices[currentMode] = idx; updatePresetDisplay(); closeDropdown(); }
+        function nextPreset() { if (isEditingName) return; const l = getCurrentList(); currentIndices[currentMode] = (currentIndices[currentMode] + 1) % l.length; updatePresetDisplay(); }
+        function prevPreset() { if (isEditingName) return; const l = getCurrentList(); currentIndices[currentMode] = (currentIndices[currentMode] - 1 + l.length) % l.length; updatePresetDisplay(); }
+        function switchMode(mode) { if (isEditingName) return; currentMode = mode; closeDropdown(); updatePresetDisplay(); }
+
+        function flashDisplay() {
+            const d = document.getElementById('presetDisplay');
+            d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash');
+            setTimeout(() => d.classList.remove('flash'), 600);
+        }
+        function savePreset() {
+            if (currentMode !== 'user') return;
+            USER_PRESETS.push({ name: `Custom ${customCounter++}`, upper: [...engine.upperDrawbars], lower: [...engine.lowerDrawbars], perc: {on: engine.percOn, soft: engine.percSoft, fast: engine.percFast, third: engine.perc3rd}, vib: {type: engine.vibType, upper: engine.vibUpper, lower: engine.vibLower}, rotary: engine.rotary, click: engine.click, tone: engine.tone, drive: engine.drive, space: engine.space, level: engine.level, cabinet: true });
+            currentIndices.user = USER_PRESETS.length - 1;
+            updatePresetDisplay(); flashDisplay();
+            setTimeout(startEditingName, 350);
+        }
+        function startEditingName() {
+            if (currentMode !== 'user' || isEditingName) return;
+            const nameEl = document.getElementById('presetName');
+            if (!nameEl || nameEl.tagName === 'INPUT') return;
+            isEditingName = true;
+            const oldName = nameEl.textContent;
+            const input = document.createElement('input');
+            input.type = 'text'; input.value = oldName;
+            input.className = 'preset-name-input';
+            input.maxLength = 20; input.spellcheck = false;
+            nameEl.parentNode.replaceChild(input, nameEl);
+            input.focus(); input.select();
+            let finished = false;
+            const finish = (save) => {
+                if (finished) return; finished = true; isEditingName = false;
+                const newName = save ? (input.value.trim() || oldName) : oldName;
+                USER_PRESETS[currentIndices.user].name = newName;
+                const newEl = document.createElement('div');
+                newEl.className = 'preset-name'; newEl.id = 'presetName';
+                newEl.textContent = newName;
+                if (input.parentNode) input.parentNode.replaceChild(newEl, input);
+                updatePresetDisplay();
+            };
+            input.addEventListener('blur', () => finish(true));
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                else if (e.key === 'Escape') { e.preventDefault(); input.value = oldName; input.blur(); }
+            });
+        }
+        document.addEventListener('click', (e) => { if (!e.target.closest('.preset-container')) closeDropdown(); });
+        updatePresetDisplay();
+
+        /* ============================================================
+           TOGGLES ROTARY
+           ============================================================ */
+        function toggleCabinet(btn) { btn.classList.toggle('active'); btn.textContent = btn.classList.contains('active') ? 'ON' : 'OFF'; }
+        function toggleSpeed(btn) {
+            btn.classList.toggle('active');
+            const isActive = btn.classList.contains('active');
+            btn.innerHTML = `<div class="speed-led ${isActive ? 'on' : ''}" id="led-speed"></div> ${isActive ? 'FAST' : 'SLOW'}`;
+            engine.rotary = isActive ? 1 : 0.5;
+        }
+
+        /* ============================================================
+           MODEL ROTARY
+           ============================================================ */
+        const modelRotary = document.getElementById('model-rotary');
+        let isDraggingRotary = false, startYRotary = 0, startValueRotary = 50;
+        function updateRotaryUI(value) { modelRotary.style.setProperty('--knob-rotation', `${-135 + (value / 100) * 270}deg`); }
+        updateRotaryUI(startValueRotary);
+        modelRotary.addEventListener('pointerdown', (e) => { isDraggingRotary = true; startYRotary = e.clientY; modelRotary.setPointerCapture(e.pointerId); });
+        modelRotary.addEventListener('pointermove', (e) => {
+            if (!isDraggingRotary) return;
+            const d = startYRotary - e.clientY;
+            const nv = Math.max(0, Math.min(100, startValueRotary + (d / 1.5)));
+            modelRotary.dataset.value = nv; updateRotaryUI(nv);
+        });
+        const endDragRotary = () => { if (!isDraggingRotary) return; isDraggingRotary = false; startValueRotary = parseFloat(modelRotary.dataset.value); };
+        modelRotary.addEventListener('pointerup', endDragRotary);
+        modelRotary.addEventListener('pointercancel', endDragRotary);
+        const models = ['B3', 'Pipe', 'Farf'];
+        let currentModelIndex = 0;
+        function toggleModelSwitch(s) {
+            currentModelIndex = (currentModelIndex + 1) % 3;
+            const nm = models[currentModelIndex];
+            s.dataset.pos = nm;
+            document.querySelectorAll('.led-row').forEach(r => r.classList.remove('active'));
+            document.getElementById(`row-${nm.toLowerCase()}`).classList.add('active');
+            document.querySelectorAll('.model-led-item').forEach(l => l.classList.remove('active'));
+            document.getElementById(`led-${nm.toLowerCase()}`).classList.add('active');
+        }
+
+        /* ============================================================
+           FADERS VERTICAUX
+           ============================================================ */
+        document.querySelectorAll('.fader-wrapper').forEach(w => {
+            let isDragging = false;
+            const fill = w.querySelector('.fader-fill');
+            const thumb = w.querySelector('.fader-thumb');
+            const pad = 8, th = 26;
+            function updateUI(val) {
+                const usable = w.clientHeight - pad * 2;
+                const travel = Math.max(0, usable - th);
+                thumb.style.bottom = `${pad + val * travel}px`;
+                fill.style.height = `${val * usable}px`;
+            }
+            setTimeout(() => updateUI((parseFloat(w.dataset.value) || 50) / 100), 0);
+            function handleMove(e) {
+                const rect = w.getBoundingClientRect();
+                const usable = rect.height - pad * 2;
+                const y = rect.bottom - pad - e.clientY;
+                const val = Math.max(0, Math.min(1, y / usable));
+                updateUI(val); w.dataset.value = val * 100;
+            }
+            w.addEventListener('pointerdown', (e) => { isDragging = true; w.setPointerCapture(e.pointerId); handleMove(e); });
+            w.addEventListener('pointermove', (e) => { if (!isDragging) return; handleMove(e); });
+            const endDrag = () => { isDragging = false; };
+            w.addEventListener('pointerup', endDrag);
+            w.addEventListener('pointercancel', endDrag);
+        });
+
+        /* ============================================================
+           FADER HORIZONTAL BIPOLAIRE
+           ============================================================ */
+        document.querySelectorAll('.h-fader-wrapper').forEach(slider => {
+            let isDragging = false;
+            const fill = slider.querySelector('.h-fader-fill');
+            const thumb = slider.querySelector('.h-fader-thumb');
+            const pad = 8, tw = 22;
+            function updateUI(val) {
+                const usable = slider.clientWidth - pad * 2;
+                const travel = Math.max(0, usable - tw);
+                const thumbLeft = pad + val * travel;
+                thumb.style.left = `${thumbLeft}px`;
+                const tc = thumbLeft + tw / 2;
+                const rc = pad + usable / 2;
+                if (tc >= rc) { fill.style.left = `${rc}px`; fill.style.width = `${tc - rc}px`; }
+                else { fill.style.left = `${tc}px`; fill.style.width = `${rc - tc}px`; }
+            }
+            setTimeout(() => updateUI((parseFloat(slider.dataset.value) || 50) / 100), 0);
+            function handleMove(e) {
+                const rect = slider.getBoundingClientRect();
+                const usable = rect.width - pad * 2;
+                const x = e.clientX - rect.left - pad;
+                const val = Math.max(0, Math.min(1, x / usable));
+                updateUI(val); slider.dataset.value = val * 100;
+            }
+            slider.addEventListener('pointerdown', (e) => { isDragging = true; slider.setPointerCapture(e.pointerId); handleMove(e); });
+            slider.addEventListener('pointermove', (e) => { if (!isDragging) return; handleMove(e); });
+            const endDrag = () => { isDragging = false; };
+            slider.addEventListener('pointerup', endDrag);
+            slider.addEventListener('pointercancel', endDrag);
+        });
+
+        /* ============================================================
+           AUTRES
+           ============================================================ */
+        function selectExclusiveVibrato(btn) {
+            const ia = btn.classList.contains('active');
+            document.getElementById('vib-group').querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+            if (!ia) btn.classList.add('active');
+            // Mettre à jour le moteur
+            const vibButtons = document.querySelectorAll('#vib-group .btn-toggle');
+            vibButtons.forEach((b, idx) => { if (b.classList.contains('active')) engine.vibType = idx; });
+        }
+        function toggleButton(btn) { btn.classList.toggle('active'); }
+        function toggleMaster(btn, type) {
+            btn.classList.toggle('active');
+            const ia = btn.classList.contains('active');
+            btn.innerHTML = `<div class="dot"></div> ${ia ? 'ON' : 'OFF'}`;
+            const tg = document.getElementById(type === 'vib' ? 'vib-group' : 'perc-group');
+            if (ia) tg.classList.remove('disabled');
+            else tg.classList.add('disabled');
+            if (type === 'perc') engine.percOn = ia;
+        }
+        function setReverbMode(btn) {
+            btn.parentNode.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            engine.reverbMode = btn.textContent === 'Room' ? 0 : btn.textContent === 'Stage' ? 0.5 : 1;
+        }
+
+        /* ============================================================
+           OCT
+           ============================================================ */
+        let currentOct = 0;
+        function changeOct(delta) {
+            currentOct = Math.max(-2, Math.min(2, currentOct + delta));
+            document.getElementById('octDisplay').textContent = currentOct > 0 ? `+${currentOct}` : `${currentOct}`;
+            engine.octave = currentOct;
+        }
+
+        /* ============================================================
+           ZOOM / PAN
+           ============================================================ */
+        const mockup = document.getElementById('phoneMockup');
+        const viewport = document.getElementById('previewViewport');
+        let currentZoom = 1, fitZoom = 1, panX = 0, panY = 0;
+        let isPanning = false, startPanX = 0, startPanY = 0;
+        function updateTransform() {
+            mockup.style.setProperty('--zoom', currentZoom);
+            mockup.style.setProperty('--pan-x', `${panX}px`);
+            mockup.style.setProperty('--pan-y', `${panY}px`);
+        }
+        function fitToScreen() {
+            const padding = 40;
+            const wRatio = (window.innerWidth - padding) / 891;
+            const hRatio = (window.innerHeight - padding - 140) / 411;
+            fitZoom = Math.min(wRatio, hRatio, 1);
+            currentZoom = fitZoom; panX = 0; panY = 0;
+            updateTransform();
+        }
+        window.addEventListener('resize', fitToScreen);
+        fitToScreen();
+        viewport.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('.knob-wrapper, .rotary-switch, .toggle-switch, button, .segmented-control, .master-toggle, .fader-wrapper, .h-fader-wrapper, .preset-dropdown, .preset-display, .preset-mode-toggle, .preset-name-input, .preset-save-btn, .drawbar-unit, .db-thumb, .db-rail, .db-numbers')) return;
+            isPanning = true;
+            startPanX = e.clientX - panX;
+            startPanY = e.clientY - panY;
+            viewport.setPointerCapture(e.pointerId);
+        });
+        viewport.addEventListener('pointermove', (e) => {
+            if (!isPanning) return;
+            panX = e.clientX - startPanX;
+            panY = e.clientY - startPanY;
+            updateTransform();
+        });
+        const endPan = (e) => {
+            if (!isPanning) return;
+            isPanning = false;
+            viewport.releasePointerCapture(e.pointerId);
+        };
+        viewport.addEventListener('pointerup', endPan);
+        viewport.addEventListener('pointercancel', endPan);
+        let initialDistance = 0, initialZoom = 1;
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                initialDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                initialZoom = currentZoom;
+            }
+        }, { passive: true });
+        document.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+                currentZoom = Math.max(0.3, Math.min(4, initialZoom * (dist / initialDistance)));
+                updateTransform();
+            }
+        }, { passive: false });
+        window.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const factor = e.deltaY > 0 ? 0.95 : 1.05;
+                currentZoom = Math.max(0.3, Math.min(4, currentZoom * factor));
+                updateTransform();
+            }
+        }, { passive: false });
+        document.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.preset-container') || e.target.closest('.preset-name-input')) return;
+            fitToScreen();
+        });
+    </script>
+</body>
+</html>

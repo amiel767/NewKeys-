@@ -47,6 +47,28 @@ object FxC {
 
     /** Le voile sombre derrière une fenêtre flottante. */
     val scrim = Color(0xCC05070C)
+
+    /**
+     * LE POTARD PLAT — les seules teintes du disque.
+     *
+     * Elles viennent de la mesure de la référence : chez Valhalla le disque vaut
+     * 121 de luminance sur un panneau à 52, soit un rapport de 2,3. Un disque à
+     * 40 (l'ancien `0xFF2A2F3C`) disparaissait dans le panneau — c'est ce qui
+     * faisait qu'on ne « voyait » pas le potard.
+     *
+     * [knobDisc] est un gris-bleu moyen, dans notre palette froide : on garde la
+     * même luminance que la référence, on lui donne notre teinte.
+     */
+    val knobDisc = Color(0xFF6E7484)
+    /** La valeur affichée sous un potard. */
+    val knobVal = Color(0xFFAAB2C4)
+    /** L'aiguille, SOMBRE sur le disque clair (la référence ne la fait pas blanche). */
+    val knobIndex = Color(0xFF14171F)
+    /** L'anneau creusé, juste hors du disque. */
+    val knobTrack = Color(0x66000000)
+    /** Le creux d'une cellule de réglage. */
+    val cellTop = Color(0xFF161B26)
+    val cellBot = Color(0xFF0E121B)
 }
 
 /** `hx("#8FB2E8", .3f)` de la maquette : la même couleur, transparente. */

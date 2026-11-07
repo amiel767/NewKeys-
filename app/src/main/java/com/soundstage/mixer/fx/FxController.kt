@@ -14,7 +14,16 @@ import com.soundstage.mixer.audio.NativeAudioBridge
  *
  * All setters are control-thread calls and cheap enough for a slider drag.
  */
-class FxController(private val strip: Int, private val context: Context? = null) {
+class FxController(
+    private val strip: Int,
+    private val context: Context? = null,
+    /**
+     * Owner of this rack: the active patch id. Two patches of the same setlist must
+     * not share effects, so the persisted key carries it. Empty = the legacy,
+     * un-scoped key (no patch loaded).
+     */
+    private val scope: String = "",
+) {
     /** Instrument id on this strip, -1 when the soundfont plays as it is. */
     var instrumentId by mutableStateOf(-1)
         private set
@@ -220,28 +229,34 @@ class FxController(private val strip: Int, private val context: Context? = null)
     /** Persists the current strip state. */
     fun save() {
         val ctx = context ?: return
-        FxPersistence.save(ctx, strip, FxPersistence.toJson(strip, snapshot()))
+        FxPersistence.save(ctx, scope, strip, FxPersistence.toJson(strip, snapshot()))
     }
 
     /** Restores the strip from storage and pushes everything to the native mixer. */
     fun restore() {
         val ctx = context ?: return
-        val saved = FxPersistence.fromJson(FxPersistence.load(ctx, strip), slotCount) ?: return
+        val saved = FxPersistence.fromJson(FxPersistence.loadMigrating(ctx, scope, strip), slotCount) ?: return
         if (saved.instrumentId >= 0) {
             setInstrument(saved.instrumentId)
             saved.instrumentParams.forEachIndexed { i, v -> setInstrumentParam(i, v) }
         }
         saved.effects.forEachIndexed { slot, entry ->
-            if (entry != null && setEffect(slot, entry.id)) {
-                // The saved values must reach the engine, not just the Kotlin list.
-                // Writing `params[slot][i]` alone left the native effect on its
-                // registry defaults, so after a restart the UI showed the stored
-                // knob positions while the audio played something else until the
-                // user touched every knob.
-                entry.params.forEachIndexed { i, v ->
-                    if (i < params[slot].size) setEffectParam(slot, i, v)
+            if (entry != null) {
+                // Le nom du preset est une metadonnee de la case : il se restaure
+                // meme si le moteur refuse l'installation (pas de pont natif), sinon
+                // la case revenait vide alors que le son etait le bon.
+                if (slot < presetNames.size) presetNames[slot] = entry.preset
+                if (setEffect(slot, entry.id)) {
+                    // The saved values must reach the engine, not just the Kotlin list.
+                    // Writing `params[slot][i]` alone left the native effect on its
+                    // registry defaults, so after a restart the UI showed the stored
+                    // knob positions while the audio played something else until the
+                    // user touched every knob.
+                    entry.params.forEachIndexed { i, v ->
+                        if (i < params[slot].size) setEffectParam(slot, i, v)
+                    }
+                    if (entry.bypass) setBypass(slot, true)
                 }
-                if (entry.bypass) setBypass(slot, true)
             }
         }
         abA = saved.abA?.toFloatArray()
