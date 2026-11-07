@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,31 +23,24 @@ import kotlin.math.min
  * La maquette est mise à l'échelle uniformément (comme `fitToScreen`) en redéfinissant la densité :
  * tous les dp/sp restent ceux du HTML, donc rendu net à toute taille d'écran.
  * À placer en paysage ; masque barres système / encoche côté Activity si tu veux le plein écran.
- *
- * [startInset] réserve une bande à gauche (unités de la maquette) pour la flèche retour de la
- * fenêtre hôte : la maquette démarre ses panneaux à x=8, sous la flèche. Le fond couvre toujours
- * toute la surface, seul le bloc est décalé.
  */
 @Composable
 fun OrganScreen(
     modifier: Modifier = Modifier,
     state: OrganState = remember { OrganState() },
     listener: OrganListener = OrganListener.None,
-    startInset: Float = 0f,
 ) {
     state.listener = listener
     BoxWithConstraints(
         modifier.fillMaxSize().background(Brush.verticalGradient(listOf(OrganColors.BgMainTop, OrganColors.BgMainBottom))),
     ) {
         val base = LocalDensity.current
-        // The inset is a design unit: it is added to the block's own width, so the scale keeps both
-        // inside the frame. With no inset this reduces to the plain centred fit.
-        val totalW = ((OrganDesign.W + startInset) * base.density).coerceAtLeast(1f)
+        val totalW = (OrganDesign.W * base.density).coerceAtLeast(1f)
         val scale = min(constraints.maxWidth / totalW, constraints.maxHeight / (OrganDesign.H * base.density))
         CompositionLocalProvider(LocalDensity provides Density(base.density * scale, fontScale = 1f)) {
             val D = OrganDesign
             Box(
-                Modifier.align(Alignment.Center).offset(x = (startInset / 2f).dp).size(D.W.dp, D.H.dp)
+                Modifier.align(Alignment.Center).size(D.W.dp, D.H.dp)
                     // clic hors du bloc Preset → ferme le menu (sans consommer l'événement)
                     .pointerInput(state.dropdownOpen) {
                         if (!state.dropdownOpen) return@pointerInput
@@ -65,7 +57,7 @@ fun OrganScreen(
                         }
                     },
             ) {
-                OctPanel(PanelRect(D.X1, D.Y1, D.COL1, D.ROW1), state)
+                OctPanel(PanelRect(D.X1 + 30f, D.Y1, D.COL1 - 30f, D.ROW1), state)
                 VibratoPanel(PanelRect(D.X1, D.Y2, D.COL1, D.ROW2), state)
                 RotaryPanel(PanelRect(D.X1, D.Y3, D.COL1, D.ROW3 + D.GAP + D.ROW4), state)
                 DrawbarsPanel(PanelRect(D.X2, D.Y2, D.COL2, D.ROW2 + D.GAP + D.ROW3 + D.GAP + D.ROW4), state)

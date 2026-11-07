@@ -154,7 +154,8 @@ fun AeOrganScreen(c: AeCtl) {
     val state = remember(c.s.strip) { OrganState() }
     val listener = remember(c) { AeOrganListener { i, v -> c.set(i, v) } }
     DisposableEffect(state) { listener.onPresetApplied(state.currentPreset); onDispose { } }
-    // The window draws its back arrow at x 10..40, and the panel starts at 8. Shift the block right
-    // so the arrow lands on empty backdrop instead of on the Oct panel.
-    OrganScreen(modifier = Modifier.fillMaxSize(), state = state, listener = listener, startInset = 40f)
+    // The window's back arrow sits at x 10..40 in stage units. Only the Oct panel is pushed right
+    // to clear it: shifting the whole block left a band of empty backdrop on the right, which read
+    // as a misaligned screen. The other columns keep the maquette's geometry.
+    OrganScreen(modifier = Modifier.fillMaxSize(), state = state, listener = listener)
 }
