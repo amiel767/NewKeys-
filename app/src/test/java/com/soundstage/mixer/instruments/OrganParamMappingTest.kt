@@ -63,22 +63,47 @@ class OrganParamMappingTest {
 
     @Test fun eq_and_drive_land_on_their_parameters() {
         listener.onKnob(OrganKnobId.EqTreble, 0.7f); assertWrote(32, 0.7f)
-        listener.onKnob(OrganKnobId.EqBass, 0.4f); assertWrote(27, 0.4f)
+        listener.onKnob(OrganKnobId.EqMid, 0.9f); assertWrote(36, 0.9f)
+        listener.onKnob(OrganKnobId.EqBass, 0.4f); assertWrote(45, 0.4f)
         listener.onKnob(OrganKnobId.Drive, 0.9f); assertWrote(28, 0.9f)
         listener.onKnob(OrganKnobId.ReverbAmount, 0.2f); assertWrote(34, 0.2f)
     }
 
-    @Test fun controls_without_a_parameter_write_nothing() {
-        listener.onKnob(OrganKnobId.EqMid, 0.9f)
-        listener.onKnob(OrganKnobId.RotaryRise, 0.5f)
-        listener.onKnob(OrganKnobId.RotaryFall, 0.5f)
-        listener.onFader(OrganFaderId.RotaryDepth, 0.5f)
-        listener.onFader(OrganFaderId.RotaryMic, 0.5f)
-        listener.onFader(OrganFaderId.RotaryHornDrum, 0.5f)
-        listener.onOctave(2)
-        listener.onModel(1)
-        listener.onModelDial(0.3f)
-        assertEquals("no parameter should have been written", 0, written.size)
+    @Test fun the_rotary_knobs_own_their_rotor_ramps() {
+        listener.onKnob(OrganKnobId.RotaryRise, 0.25f); assertWrote(37, 0.25f)
+        listener.onKnob(OrganKnobId.RotaryFall, 0.75f); assertWrote(38, 0.75f)
+    }
+
+    @Test fun the_rotary_faders_own_depth_mic_and_balance() {
+        listener.onFader(OrganFaderId.RotaryDepth, 0.1f); assertWrote(39, 0.1f)
+        listener.onFader(OrganFaderId.RotaryMic, 0.6f); assertWrote(40, 0.6f)
+        listener.onFader(OrganFaderId.RotaryHornDrum, 0.9f); assertWrote(41, 0.9f)
+    }
+
+    @Test fun octave_is_centred_on_the_parameter_and_spans_the_engine_range() {
+        listener.onOctave(-2); assertWrote(44, 0f)
+        listener.onOctave(0); assertWrote(44, 0.5f)
+        listener.onOctave(2); assertWrote(44, 1f)
+    }
+
+    @Test fun the_model_selector_maps_its_own_order_onto_the_engines() {
+        listener.onModel(1); assertWrote(42, 0f)    // Pipe
+        listener.onModel(0); assertWrote(42, 0.5f)  // B3, the neutral voicing
+        listener.onModel(2); assertWrote(42, 1f)    // Farf
+    }
+
+    @Test fun the_model_dial_is_its_own_parameter() {
+        listener.onModelDial(0.35f); assertWrote(43, 0.35f)
+    }
+
+    @Test fun every_panel_control_now_reaches_the_engine() {
+        assertEquals("the panel has no dead control left", 0, OrganParams.uiOnly.size)
+        assertEquals("the table must cover the whole engine contract", OrganParams.COUNT, OrganParams.table.size)
+        assertEquals(
+            "every engine index must be described exactly once",
+            (0 until OrganParams.COUNT).toList(),
+            OrganParams.table.map { it.index },
+        )
     }
 
     @Test fun reverb_mode_keeps_its_normalized_value() {

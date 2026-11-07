@@ -13,13 +13,13 @@ import com.aetherkeys.organ.OrganScreen
 import com.aetherkeys.organ.OrganState
 
 /**
- * The 36 parameters of `fx_organ.h`, in engine order, and what drives each one.
+ * The 46 parameters of `fx_organ.h`, in engine order, and what drives each one.
  *
  * [ui] names the control in the delivered organ panel, or is null when nothing on screen reaches
  * the parameter. The gaps are the point of the table: they are what the engine still owes the UI.
  */
 internal object OrganParams {
-    const val COUNT = 36
+    const val COUNT = 46
 
     data class Row(val index: Int, val name: String, val ui: String?, val note: String = "")
 
@@ -38,7 +38,7 @@ internal object OrganParams {
         add(Row(24, "Vib Lower", null, "same"))
         add(Row(25, "Rotary speed", "FAST / SLOW", "the panel has no STOP: only .5 and 1 are reachable"))
         add(Row(26, "Click", null, "preset only"))
-        add(Row(27, "Tone", "EQ Bass", "the engine's voicing doubles as the bass band"))
+        add(Row(27, "Tone", null, "preset only: the panel's EQ is a real EQ now, not the voicing shelf"))
         add(Row(28, "Drive", "Drive"))
         add(Row(29, "Space", null, "preset only"))
         add(Row(30, "Level", null, "preset only"))
@@ -47,21 +47,31 @@ internal object OrganParams {
         add(Row(33, "Cabinet", "Rotary ON/OFF"))
         add(Row(34, "Amount", "Reverb Amount"))
         add(Row(35, "VelSense", null, "preset only"))
+        add(Row(36, "Mid", "EQ Mid", "peaking bell at 800 Hz, +/-18 dB, flat at .5"))
+        add(Row(37, "Rot Rise", "Rotary Rise", "rotor ramp 0.7 s * 2^((v-.5)*4): .5 is the hardware's own"))
+        add(Row(38, "Rot Fall", "Rotary Fall", "same law on the 2.5 s drum ramp"))
+        add(Row(39, "Rot Depth", "Rotary Depth", "Leslie AM 0.70/0.50 at .5, doubled at 1"))
+        add(Row(40, "Rot Mic", "Rotary Mic", "Doppler at .5, doubled at 1"))
+        add(Row(41, "Rot Balance", "Horn / Drum", "horn * 2^(2(v-.5)), drum * 2^(-2(v-.5)): even at .5"))
+        add(Row(42, "Model", "Organ Model", "0 Pipe, .5 B3, 1 Farf: a real voicing switch"))
+        add(Row(43, "Model dial", "Organ Model dial", "+/-4 dB of top character, neutral at .5"))
+        add(Row(44, "Octave", "Oct +/-", "transposes the notes, .5 = 0, -2..+2"))
+        add(Row(45, "Bass", "EQ Bass", "low shelf at 250 Hz, +/-18 dB, flat at .5"))
     }
 
     /** Controls the panel draws that no engine parameter consumes yet. */
-    val uiOnly: List<Pair<String, String>> = listOf(
-        "EQ Mid" to "the engine has one tone shelf, no mid band",
-        "Rotary Rise / Fall" to "the Leslie ramp is fixed at 0.7 s / 2.5 s in the engine",
-        "Rotary Depth / Mic" to "no engine parameter",
-        "Horn / Drum" to "no engine parameter",
-        "Organ Model (B3 / Pipe / Farf) + dial" to "the engine is one additive tonewheel voicing",
-        "Octave ±" to "must transpose the incoming notes, not a parameter",
-    )
+    val uiOnly: List<Pair<String, String>> = emptyList()
 }
 
 /** Panel vibrato order (V1 C1 V2 C2 V3 C3) to the engine's own V1 V2 V3 C1 C2 C3. */
 private val VIB_TO_ENGINE = intArrayOf(0, 3, 1, 4, 2, 5)
+
+/** Panel model order (0 B3, 1 Pipe, 2 Farf) to the engine's (0 Pipe, .5 B3, 1 Farf). */
+private fun modelParam(index: Int) = when (index) {
+    1 -> 0f
+    2 -> 1f
+    else -> 0.5f
+}
 
 /**
  * Bridges [OrganListener] onto the engine's normalized 0..1 parameters. [write] is
@@ -92,22 +102,28 @@ class AeOrganListener(private val write: (Int, Float) -> Unit) : OrganListener {
     override fun onKnob(id: OrganKnobId, value01: Float) {
         when (id) {
             OrganKnobId.EqTreble -> write(32, value01)
-            OrganKnobId.EqBass -> write(27, value01)
+            OrganKnobId.EqMid -> write(36, value01)
+            OrganKnobId.EqBass -> write(45, value01)
             OrganKnobId.Drive -> write(28, value01)
             OrganKnobId.ReverbAmount -> write(34, value01)
-            else -> Unit // EQ Mid, Rotary Rise / Fall: no engine parameter yet
+            OrganKnobId.RotaryRise -> write(37, value01)
+            OrganKnobId.RotaryFall -> write(38, value01)
         }
     }
 
-    override fun onFader(id: OrganFaderId, value01: Float) = Unit // Depth / Mic / Horn-Drum: no engine parameter yet
+    override fun onFader(id: OrganFaderId, value01: Float) = when (id) {
+        OrganFaderId.RotaryDepth -> write(39, value01)
+        OrganFaderId.RotaryMic -> write(40, value01)
+        OrganFaderId.RotaryHornDrum -> write(41, value01)
+    }
 
-    override fun onOctave(octave: Int) = Unit // applied to the note numbers upstream, not a parameter
+    override fun onOctave(octave: Int) = write(44, (octave + 2) / 4f)
 
     override fun onReverbMode(mode: Float) = write(31, mode)
 
-    override fun onModel(index: Int) = Unit
+    override fun onModel(index: Int) = write(42, modelParam(index))
 
-    override fun onModelDial(value01: Float) = Unit
+    override fun onModelDial(value01: Float) = write(43, value01)
 
     override fun onPresetApplied(preset: OrganPreset) {
         for (i in 0 until 9) {

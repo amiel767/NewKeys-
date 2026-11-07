@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -129,14 +130,34 @@ internal fun OrganKnob(size: Int, value: Float, onValueChange: (Float) -> Unit, 
     }
 }
 
+/**
+ * Barre LED d'une poignée de fader, centrée dans son cadre. La maquette la dessine en dur dans le
+ * capot (60 % de la largeur, 2 px, rayon 1, halo bleu) : la LED floutée du composant du mixeur est
+ * trop large et trop molle pour se lire comme un repère, donc on la redessine nette.
+ */
+@Composable
+private fun LedBar(widthDp: Float, heightDp: Float) {
+    Canvas(Modifier.size(widthDp.dp, heightDp.dp)) {
+        val r = size.minDimension / 2f
+        drawRoundRect(Acc.copy(alpha = 0.35f), Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(r))
+        drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(r))
+    }
+}
+
 /* ======================== FADER VERTICAL (13 × H) ======================== */
 @Composable
 internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onValueChange)
     var dragging by remember { mutableStateOf(false) }
-    BoxWithConstraints(modifier.width(13.dp).fillMaxHeight()) {
+    // La largeur en pixels du fader. La maquette mesure la poignée sur `getBoundingClientRect` :
+    // ici le BoxWithConstraints fait 13 dp de large, mais le parent le contraint à moins (le
+    // rotary n'accorde que ~11 dp par fader). On mesure donc la largeur réellement obtenue, et
+    // la rainure est à sa moitié — c'est ce qui centre la poignée au lieu de la décaler.
+    var widthPx by remember { mutableFloatStateOf(13f) }
+    BoxWithConstraints(modifier.requiredWidth(13.dp).fillMaxHeight().onSizeChanged { widthPx = it.width.toFloat() }) {
         val h = maxHeight.value
+        val railCx = widthPx / 2f
         val usable = h - 16f
         val travel = max(0f, usable - 26f)
         // Le rail et la rainure ne dépendent pas de la valeur : un drawBehind qui ne lit pas `v`
@@ -158,7 +179,7 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
         // (pas de relayout, pas de redraw du rail) et sans ressort pendant le drag.
         val fill by animateFloatAsState(v / 100f, if (dragging) tween(0) else spring(0.7f, Spring.StiffnessMedium), label = "vf")
         Box(
-            Modifier.align(Alignment.BottomStart).offset(x = 5f.dp, y = (-8).dp)
+            Modifier.align(Alignment.BottomStart).offset { IntOffset((railCx - 1.5f * density).roundToInt(), (-8f * density).roundToInt()) }
                 .width(3.dp).height(usable.dp)
                 .graphicsLayer {
                     val fh = fill * usable * density
@@ -170,16 +191,22 @@ internal fun OrganVFader(value: Float, onValueChange: (Float) -> Unit, modifier:
                     drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
                 },
         )
-        // thumb : centré sur le rail (left = 6.5 - 20/2 = -3.5), borné à [8, h-34] pour ne jamais
-        // déborder du panneau, ni en haut ni en bas.
+        // thumb : `requiredSize`, pas `size`. Le parent fait 13 dp de large et `size` y est
+        // contraint : FaderThumb centrait alors son dessin dans 13×26, donc un capot de 13×16
+        // (minuscule). requiredSize garde les 20×26 et le composant s'y dessine à l'échelle.
+        // left = centre de la rainure - 10, pour que la poignée soit centrée sur la rainure.
         val bottom = 8f + fill * travel
         val topY = (h - bottom - 26f).coerceIn(0f, max(0f, h - 26f))
         Box(
-            Modifier.offset { IntOffset((-3.5f * density).roundToInt(), (topY * density).roundToInt()) }
-                .size(20.dp, 26.dp),
+            Modifier.offset { IntOffset((railCx - 10f * density).roundToInt(), (topY * density).roundToInt()) }
+                .requiredSize(20.dp, 26.dp),
             contentAlignment = Alignment.Center,
         ) {
-            FaderThumb(accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false, showLed = false)
+            // Le capot vient du composant du mixeur, mais sa LED floutée est large et molle :
+            // la maquette veut une barre nette de 60 % de la largeur et 2 px de haut. On la
+            // dessine ici, dans le capot, avec son halo — c'est elle qu'on lit sur un fader.
+            FaderThumb(accent = Acc, modifier = Modifier.fillMaxSize(), showShadow = false, showLed = false)
+            LedBar(widthDp = 12f, heightDp = 2f)
         }
         // zone tactile élargie à 20 dp (le thumb dépasse du rail)
         Box(
@@ -250,13 +277,19 @@ internal fun OrganHFader(value: Float, onValueChange: (Float) -> Unit, modifier:
                     drawRoundRect(Acc, Offset.Zero, size, androidx.compose.ui.geometry.CornerRadius(1.5f * density))
                 },
         )
-        // thumb : left = 8 + v × travel, borné pour rester dans la largeur du panneau.
+        // thumb : left = 8 + v × travel, en requiredSize pour que le parent (hauteur 13 dp) ne
+        // réduise pas la poignée : FaderThumb s'y dessine 22×18 puis tourné de 90°, donc 18×22.
         val thumbLeft = (8f + fill * travel).coerceIn(0f, max(0f, w - 22f))
-        Box(Modifier.offset { IntOffset((thumbLeft * density).roundToInt(), 0) }.size(22.dp, 13.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.offset { IntOffset((thumbLeft * density).roundToInt(), 0) }.requiredSize(22.dp, 13.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             FaderThumb(
-                accent = Color.Transparent, modifier = Modifier.size(18.dp, 22.dp).graphicsLayer { rotationZ = 90f },
+                accent = Acc, modifier = Modifier.requiredSize(18.dp, 22.dp).graphicsLayer { rotationZ = 90f },
                 showShadow = false, showLed = false,
             )
+            // Barre LED verticale (le fader est couché) : 60 % de la hauteur du capot, 2 px de large.
+            LedBar(widthDp = 2f, heightDp = 11f)
         }
         Box(
             Modifier.fillMaxSize().requiredHeight(18.dp).align(Alignment.Center).pointerInput(Unit) {

@@ -32,6 +32,8 @@ static void setNeutral(OrganEngine& e) {
   e.setNorm(33, 0.5f);   // Cabinet
   e.setNorm(34, 0.5f);   // Amount
   e.setNorm(35, 0.5f);   // VelSense
+  // New contract (36..45), all neutral at 0.5 so the classic voicing is what the probe hears.
+  for (int i = 36; i < e.paramCount(); ++i) e.setNorm(i, 0.5f);
 }
 
 static void stats(OrganEngine& e, float sr, float& rms, float& cent) {
@@ -75,6 +77,18 @@ static void precondition(OrganEngine& e, int idx) {
   if (idx == 31) { e.setNorm(29, 0.6f); e.setNorm(34, 0.5f); }  // RevMode exige un envoi et un Amount neutre
   if (idx == 34) e.setNorm(29, 0.6f);                      // Amount exige un envoi (Space > 0)
   if (idx == 24 || idx == 25) e.setNorm(22, 0.6f);         // VibUpper/Lower exigent le vibrato
+  // Le moteur lit upper||lower : allumer un seul ne se voit pas si l'autre est deja allume.
+  // On eteint l'autre manuel pour isoler le parametre mesure.
+  if (idx == 23) e.setNorm(24, 0.f);
+  if (idx == 24) e.setNorm(23, 0.f);
+  // Depth / Mic / Balance ne se lisent que quand le rotor tourne : a l'arret les deux
+  // dephasages et l'AM valent 1, donc le parametre ne peut rien deplacer.
+  if (idx >= 39 && idx <= 41) e.setNorm(25, 1.f);
+  // Les rampes Rise / Fall se lisent sur la transition STOP -> FAST : a vitesse constante
+  // (valeur neutre 1 = FAST) la rampe est deja finie, donc le parametre ne peut rien deplacer.
+  if (idx == 37 || idx == 38) e.setNorm(25, 0.5f);
+  // Le dial de mode n'agit qu'hors du B3 : au neutre (0.5) l'ecart de mode est nul.
+  if (idx == 43) e.setNorm(42, 0.f);
 }
 
 // Mesure un parametre : valeur basse contre valeur haute, tout le reste identique.
@@ -101,7 +115,8 @@ int main() {
     "Upper 16'","Upper 5⅓'","Upper 8'","Upper 4'","Upper 2⅔'","Upper 2'","Upper 1⅗'","Upper 1⅓'","Upper 1'",
     "Lower 16'","Lower 5⅓'","Lower 8'","Lower 4'","Lower 2⅔'","Lower 2'","Lower 1⅗'","Lower 1⅓'","Lower 1'",
     "PercOn","PercSoft","PercFast","Perc3rd","Vibrato","VibUpper","VibLower","Rotary","Click","Tone",
-    "Drive","Space","Level","RevMode","Treble","Cabinet","Amount","VelSense"};
+    "Drive","Space","Level","RevMode","Treble","Cabinet","Amount","VelSense",
+    "Mid","RotRise","RotFall","RotDepth","RotMic","RotBal","Model","ModelDial","Octave","Bass"};
 
   printf("%-11s %-20s %-20s %s\n", "param", "valeur basse", "valeur haute", "verdict");
   int morts = 0;
@@ -118,5 +133,18 @@ int main() {
            noms[i], m.r0, m.c0, m.r1, m.c1, agit ? "AGIT" : "*** MORT ***", dr, dc);
   }
   printf("\n%d parametres, %d morts\n", N, morts);
+  // Regression : l'octave est un parametre vivant, donc une touche peut etre relachee sur un
+  // autre octave que celui de l'appui. Sans memoire par touche, la note reste bloquee.
+  {
+    OrganEngine e; e.prepare(48000.f, 512);
+    setNeutral(e);
+    e.noteOn(60, 100);
+    e.setNorm(44, 1.f);   // +2 octaves pendant que la touche est tenue
+    e.noteOff(60);
+    float r, c; stats(e, 48000.f, r, c);
+    const int restant = e.activeWheels();
+    printf("octave tenue puis relachee : %d roues actives %s\n", restant, restant == 0 ? "OK" : "*** NOTE BLOQUEE ***");
+    if (restant != 0) ++morts;
+  }
   return morts == 0 ? 0 : 1;
 }

@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "OrganLab", 36), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
+    ORGAN(6, "OrganLab", 46), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
     // 17 = contrat du moteur (fx_piano.h, kParams).  L'index 12 (ex-DRIVE) est
     // recycle en bruit de touche, 13 (ex-PUNCH) est libre, 16 est le bruit de
     // marteau.  AMP et PUNCH sont retires du moteur : voir l'en-tete de fx_piano.h.
@@ -31,7 +31,7 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     KEYBOARDS(17, "Æther Keyboards", 20);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
-        ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
+        ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25, 42, 44)
         SYNTH -> intArrayOf(11, 18, 19, 26)
         LEADS -> intArrayOf(5, 6, 7, 8, 9, 17, 28)
         SAX -> intArrayOf(0, 1, 2, 3)
