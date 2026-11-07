@@ -606,6 +606,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
      * si la setlist existe encore sur disque, pour ne pas ouvrir une setlist supprimee.
      */
     private suspend fun restoreLastOpenedSetlist() {
+        // `refreshStorageFiles` lance le scan sans le bloquer : sans cette attente,
+        // `scenes` est encore vide et rien ne se rouvre.
+        refreshStorageJob?.join()
         // `pendingSetlistRestore` vient du blob d'etat, ecrit par TOUS les chemins
         // d'ouverture ; `setlist_last_opened` ne l'est que par l'ecran Setlists et
         // sert de repli pour les etats plus anciens.
