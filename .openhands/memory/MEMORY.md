@@ -348,3 +348,16 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
 - Tests : `OrganParamMappingTest` (10) + `OrganControlsInputTest` (5) verts. Drawbar haut=0 bas=8.
 - 3 echecs de suite PREEXISTANTS hors sujet : `ExampleRobolectricTest`,
   `GreetingScreenshotTest`, `PianoPackFormatTest` (pack absent du depot).
+
+## Session 2026-11-04 (4e) — orgue : contrat 46 + poignees de fader
+- **`fx_organ.h` : 36 -> 46 params**, tous neutres a 0,5. `AeCore` ORGAN.paramCount=46,
+  `discrete` += 42 (Model) et 44 (Octave). Pont `AeOrganBridge` : table de 46 lignes,
+  `uiOnly` vide (plus aucun controle mort). Commit `037ea0e`.
+- **Poignee de fader ecrasee** : un parent `width(13.dp)` CONTRAINT l'enfant ; `size()`
+  y devient 13 dp et FaderThumb, qui centre son dessin, rend un capot minuscule.
+  Utiliser `requiredSize` et centrer sur la largeur REELLE (`onSizeChanged`).
+  La LED floutee du composant ne se lit pas : dessiner une barre nette.
+- **Regle** : `noteOff` doit memoriser l'octave de l'appui (l'octave est un parametre
+  vivant) ; ne JAMAIS re-transposer dans `noteOff`.
+- **Outil** : `tools/aetherfx/organ_probe.cpp` (g++ direct) liste les parametres morts
+  et les preconditions de lecture. `46 parametres, 0 mort` = contrat tenu.
