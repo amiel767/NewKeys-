@@ -467,3 +467,22 @@ Piano `9c93aa40` — ne pas y pousser.
   vivant) ; ne JAMAIS re-transposer dans `noteOff`.
 - **Outil** : `tools/aetherfx/organ_probe.cpp` (g++ direct) liste les parametres morts
   et les preconditions de lecture. `46 parametres, 0 mort` = contrat tenu.
+
+## Session 2026-11-07 (New 3 Design) — capuchons de fader + residus orgue
+- **Capuchon de fader decentre = centre DEUX fois.** Le conteneur centre deja
+  l'enfant ; l'offset portait en plus `(RAIL_W - THUMB_W)/2` -> decalage de
+  -3,5 unites (mesure : capot 477,5 vs rainure 488,5). Regle : sur un fader, le
+  centrage en travers vient de `Modifier.align(...)`, l'offset ne porte QUE sur
+  la course. Meme piege sur le fader couche. Commit `1abcdc5`.
+- **`FaderThumb` : l'ombre deborde du cadre** (SH_H 1790 > H 1657). Si
+  `showShadow=false` (comme sur l'orgue) il n'y a AUCUNE ombre ; un parent qui
+  coupe le cadre la fait disparaitre aussi.
+- **Fenetre d'instrument vs panneau** : le seul residu de la coque sur l'orgue
+  etait le `SaveButton` de `AeInstrumentWindow` (gater `isModified` par
+  `&& instrument != ORGAN`). `OCT/PRESET/ORGAN MODEL/FACTORY/USER` appartiennent
+  a l'orgue. Il ne reste que `BackArrow` en haut a gauche.
+- **NE PAS lancer toute la suite** : `:app:testDebugUnitTest` complet se bloque
+  sur `GreetingScreenshotTest` (AppNotIdleException). Cibler les tests organe
+  (`OrganControlsInputTest`, `OrganUiCaptureTest`, `AeInstrumentCaptureTest`,
+  `AeManagerTest`) = 42/42 en ~13 s. Echecs preexistants hors sujet :
+  `ExampleRobolectricTest`, `GreetingScreenshotTest`, `PianoPackFormatTest`.
