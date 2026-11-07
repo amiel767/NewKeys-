@@ -25,8 +25,10 @@ static const int BLK = 256;
 
 static std::vector<float> base() {
   std::vector<float> p(15, 0.f);
-  p[MIX] = 1.f; p[PREDELAY] = 0.f; p[DECAY] = .13f; p[HF] = .33f; p[HS] = .5f;
-  p[BF] = .67f; p[BM] = .2f;  // 0.2 == the 1.0x neutral point of the bass multiplier
+  p[MIX] = 1.f; p[PREDELAY] = 0.f; p[DECAY] = .13f;
+  // The four frequencies are Curve::FreqLog: .6462 is 6 kHz damping, .8451 is 700 Hz bass.
+  p[HF] = .6462f; p[HS] = .5f;
+  p[BF] = .8451f; p[BM] = .2f;  // 0.2 == the 1.0x neutral point of the bass multiplier
   p[SIZE] = .5f; p[ATT] = 0.f; p[EARLY] = 0.f; p[LATE] = 1.f;
   p[RATE] = .25f; p[DEPTH] = 0.f; p[HC] = 1.f; p[LC] = 0.f;
   return p;
@@ -136,7 +138,7 @@ static double cornerHz(const std::vector<float>& p, bool highCut, double ref) {
   if (highCut) refp[HC] = 1.f; else refp[LC] = 0.f;
   double prevF = 0, prevDb = 0; bool have = false;
   for (int i = 0; i < 64; ++i) {
-    const double f = 100.0 * std::pow(200.0, i / 63.0);  // 100 Hz .. 20 kHz
+    const double f = 20.0 * std::pow(1000.0, i / 63.0);  // 20 Hz .. 20 kHz (LowCut goes to 10 Hz)
     const double g = wetGain(p, f) / std::max(wetGain(refp, f), 1e-12);
     const double db = 20.0 * std::log10(std::max(g, 1e-9));
     if (have) {
@@ -216,14 +218,26 @@ int main() {
     }
   }
 
-  std::printf("\nEQ CORNERS  (divided response, -3 dB point)\n");
+  std::printf("\nEQ CORNERS  (divided response, -3 dB point; log-mapped controls)\n");
   {
-    auto p = base(); p[HC] = 0.f;                    // descriptor: 1000 Hz
-    check("  HighCut @ min (Hz)", 1000.0, cornerHz(p, true, -3.0), 35.0);
+    // The four frequencies are Curve::FreqLog: shown = min * ratio^n. Checking them at
+    // the EXTREMES only would not catch a wrong mapping in the middle, so the middle is
+    // checked too — that is exactly where a linear/log mix-up hides.
+    // n = 1 is the OPEN state, and the reference IS that state, so the divided response
+    // is 1 at every frequency and there is no corner to find. Skipped, not failed.
+    for (float n : {0.f, .5f}) {
+      auto p = base(); p[HC] = n;
+      check("  HighCut (Hz)", 1000.0 * std::pow(20.0, n), cornerHz(p, true, -3.0), 35.0);
+    }
+    std::printf("  HighCut open (20 kHz)    no corner to measure (reference state)\n");
   }
   {
-    auto p = base(); p[LC] = 1.f;                    // descriptor: 500 Hz
-    check("  LowCut @ max (Hz)", 500.0, cornerHz(p, false, -3.0), 45.0);
+    // Symmetric: n = 0 is the OPEN state of the high-pass (10 Hz), used as reference.
+    for (float n : {.5f, 1.f}) {
+      auto p = base(); p[LC] = n;
+      check("  LowCut (Hz)", 10.0 * std::pow(50.0, n), cornerHz(p, false, -3.0), 45.0);
+    }
+    std::printf("  LowCut open (10 Hz)      no corner to measure (reference state)\n");
   }
 
   std::printf("\n%s\n", bad == 0 ? "TOUT PASSE" : "A REVOIR");

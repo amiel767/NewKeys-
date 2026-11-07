@@ -1,6 +1,7 @@
 package com.aetherkeys.fx
 
 import androidx.compose.ui.graphics.Color
+import kotlin.math.pow
 
 /**
  * Le catalogue de design de la fenêtre FX.
@@ -33,6 +34,10 @@ data class FxParamD(
     val unit: String,
     val decimals: Int = 0,
     val main: Boolean = false,
+    // Les quatre frequences de Space sont normalisees en LOGARITHME : `logRatio` porte
+    // le rapport max/min (0 = lineaire). Sans lui l'affichage et la molette mentiraient,
+    // car elles convertiraient lineairement une valeur que le moteur lit en log.
+    val logRatio: Float = 0f,
 )
 
 /**
@@ -231,9 +236,9 @@ object FxDesign {
             FxParamD("Mix", "mix", .34f, 0f, 100f, "%", 0),
             FxParamD("Pre-delay", "pre", .10f, 0f, 200f, "ms", 0),
             FxParamD("Decay", "decay", .1304f, .1f, 30f, "s", 2, main = true),
-            FxParamD("HighFreq", "hf", .3333f, 1000f, 16000f, "Hz", 0),
+            FxParamD("HighFreq", "hf", .6462f, 1000f, 16000f, "Hz", 0, logRatio = 16f),
             FxParamD("HighShelf", "hs", .50f, -24f, 0f, "dB", 1),
-            FxParamD("BassFreq", "bf", .6667f, 100f, 1000f, "Hz", 0),
+            FxParamD("BassFreq", "bf", .8451f, 100f, 1000f, "Hz", 0, logRatio = 10f),
             FxParamD("BassMult", "bm", .40f, .5f, 3f, "X", 2),
             FxParamD("Size", "size", 1f, 0f, 100f, "%", 0),
             FxParamD("Attack", "att", .50f, 0f, 100f, "%", 0),
@@ -241,23 +246,23 @@ object FxDesign {
             FxParamD("Late", "late", 1f, 0f, 100f, "%", 0),
             FxParamD("Rate", "rate", .2455f, .1f, 10f, "Hz", 2),
             FxParamD("Depth", "depth", .38f, 0f, 100f, "%", 0),
-            FxParamD("HighCut", "hc", .3684f, 1000f, 20000f, "Hz", 0),
-            FxParamD("LowCut", "lc", 0f, 10f, 500f, "Hz", 0),
+            FxParamD("HighCut", "hc", .6941f, 1000f, 20000f, "Hz", 0, logRatio = 20f),
+            FxParamD("LowCut", "lc", 0f, 10f, 500f, "Hz", 0, logRatio = 50f),
         ),
         // DIX presets, les valeurs de la référence, normalisées dans l'ordre moteur.
         // L'ordre de cette table est aussi un contrat : `pickPreset` retrouve
         // l'index moteur par `indexOf`.
         presets = mapOf(
-            "Shimmer" to listOf(.38f, .14f, .2467f, .5333f, .50f, .6667f, .40f, .82f, .62f, .70f, .80f, .1111f, .46f, .7895f, .3469f),
-            "Chamber" to listOf(.30f, .07f, .0862f, .3667f, .50f, .4444f, .46f, .48f, .40f, .60f, .55f, .0505f, .22f, .5789f, .1633f),
-            "Room" to listOf(.24f, .03f, .0336f, .28f, .75f, .3556f, .32f, .30f, .55f, .80f, .40f, .0253f, .12f, .4211f, .1020f),
-            "Hall" to listOf(.34f, .10f, .1304f, .3333f, .50f, .6667f, .40f, 1f, .50f, 1f, 1f, .2455f, .38f, .3684f, 0f),
-            "Plate" to listOf(.32f, .05f, .0706f, .6667f, .8333f, .2778f, .20f, .55f, .72f, .90f, .70f, .0707f, .18f, .7368f, .2653f),
-            "Cathedral" to listOf(.42f, .24f, .4181f, .2133f, .25f, .7778f, .64f, .96f, .25f, .50f, .90f, .0303f, .30f, .3158f, .2245f),
-            "Spring" to listOf(.28f, .02f, .0572f, .44f, .6667f, .3889f, .32f, .40f, .80f, .70f, .35f, .3131f, .52f, .5f, .2857f),
-            "Cloud" to listOf(.48f, .30f, .2980f, .1733f, .1667f, .6111f, .52f, .90f, .18f, .40f, 1f, .0808f, .64f, .2895f, .2041f),
-            "Infinite" to listOf(.45f, .40f, .6980f, .2f, .1667f, .6667f, .72f, 1f, .3f, .5f, 1f, .0707f, .70f, .4737f, .4082f),
-            "Bloom" to listOf(.42f, .30f, .2800f, .24f, .25f, .6111f, .56f, .95f, .35f, 1f, .6f, .0505f, .60f, .2632f, .3061f),
+            "Shimmer" to listOf(.38f, .14f, .2467f, .7925f, .50f, .8451f, .40f, .82f, .62f, .70f, .80f, .1111f, .46f, .9255f, .7388f),
+            "Chamber" to listOf(.30f, .07f, .0862f, .6751f, .50f, .6989f, .46f, .48f, .40f, .60f, .55f, .0505f, .22f, .8295f, .5617f),
+            "Room" to listOf(.24f, .03f, .0336f, .5946f, .75f, .6233f, .32f, .30f, .55f, .80f, .40f, .0253f, .12f, .7335f, .4579f),
+            "Hall" to listOf(.34f, .10f, .1304f, .6462f, .50f, .8451f, .40f, 1f, .50f, 1f, 1f, .2455f, .38f, .6941f, 0f),
+            "Plate" to listOf(.32f, .05f, .0706f, .8649f, .8333f, .5441f, .20f, .55f, .72f, .90f, .70f, .0707f, .18f, .9040f, .6746f),
+            "Cathedral" to listOf(.42f, .24f, .4181f, .5176f, .25f, .9031f, .64f, .96f, .25f, .50f, .90f, .0303f, .30f, .6496f, .6352f),
+            "Spring" to listOf(.28f, .02f, .0572f, .7315f, .6667f, .6532f, .32f, .40f, .80f, .70f, .35f, .3131f, .52f, .7849f, .6922f),
+            "Cloud" to listOf(.48f, .30f, .2980f, .4619f, .1667f, .8129f, .52f, .90f, .18f, .40f, 1f, .0808f, .64f, .6248f, .6130f),
+            "Infinite" to listOf(.45f, .40f, .6980f, .5000f, .1667f, .8451f, .72f, 1f, .3f, .5f, 1f, .0707f, .70f, .7686f, .7783f),
+            "Bloom" to listOf(.42f, .30f, .2800f, .5504f, .25f, .8129f, .56f, .95f, .35f, 1f, .6f, .0505f, .60f, .5981f, .7087f),
         ),
         // Les rampes de cinq couleurs de la référence, et le style du titre par preset.
         palettes = mapOf(
@@ -312,7 +317,8 @@ object FxDesign {
      * Les décimales sont celles du paramètre, jamais devinées par l'unité.
      */
     fun fmt(v: Float, p: FxParamD): String {
-        val x = p.min + v * (p.max - p.min)
+        val x = if (p.logRatio > 0f) p.min * p.logRatio.toDouble().pow(v.toDouble()).toFloat()
+                else p.min + v * (p.max - p.min)
         val txt = if (p.decimals <= 0) {
             kotlin.math.round(x).toInt().toString()
         } else {

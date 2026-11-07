@@ -37,10 +37,14 @@ static float norm(float v, float lo, float hi) { return (v - lo) / (hi - lo); }
 static std::vector<float> hall() {
   std::vector<float> p(15);
   p[MIX] = norm(34, 0, 100); p[PREDELAY] = norm(20, 0, 200); p[DECAY] = norm(4, 0.1f, 30);
-  p[HF] = norm(6000, 1000, 16000); p[HS] = norm(-12, -24, 0); p[BF] = norm(700, 100, 1000);
+  // The four FREQUENCIES are Curve::FreqLog: their normalised value is log(real/min)/log(ratio),
+  // not a linear norm. `logNorm` expresses the same real-world value in that convention, so the
+  // reference reverb this bench describes stays the SAME reverb it always was.
+  auto logNorm = [](float hz, float mn, float ratio) { return std::log(hz / mn) / std::log(ratio); };
+  p[HF] = logNorm(6000, 1000, 16); p[HS] = norm(-12, -24, 0); p[BF] = logNorm(700, 100, 10);
   p[BM] = norm(1.5f, 0.5f, 3); p[SIZE] = norm(100, 0, 100); p[ATT] = norm(50, 0, 100);
   p[EARLY] = norm(100, 0, 100); p[LATE] = norm(100, 0, 100); p[RATE] = norm(2.53f, 0.1f, 10);
-  p[DEPTH] = norm(38, 0, 100); p[HC] = norm(8000, 1000, 20000); p[LC] = norm(10, 10, 500);
+  p[DEPTH] = norm(38, 0, 100); p[HC] = logNorm(8000, 1000, 20); p[LC] = 0.f;
   return p;
 }
 
@@ -218,14 +222,14 @@ int main() {
     const P ps[] = {
       {"HighFreq", HF, 6000, 2.5, 4.0, 0, HC, 1.f, false},
       {"HighShelf", HS, 6000, 2.5, 4.0, 0, HC, 1.f, false},
-      {"BassFreq", BF, 300, 2.5, 4.0, 0, HC, 1.f, true},
+      {"BassFreq", BF, 200, 2.5, 4.0, 0, HC, 1.f, true},
       {"BassMult", BM, 120, 2.5, 4.0, 0, HC, 1.f, true},
       {"Attack", ATT, 220, 0.12, 0.35, 0.1, HC, 1.f, true},
       {"Late", LATE, 220, 2.5, 4.0, 0, HC, 1.f, true},
       {"Rate", RATE, 220, 2.5, 4.0, 0, HC, 1.f, false},
       {"Depth", DEPTH, 220, 2.5, 4.0, 0, HC, 1.f, false},
-      {"HighCut", HC, 12000, 2.5, 4.0, 0, HF, 1.f, false},
-      {"LowCut", LC, 40, 2.5, 4.0, 0, HC, 1.f, true},
+      {"HighCut", HC, 6000, 2.5, 4.0, 0, HF, 1.f, false},
+      {"LowCut", LC, 25, 2.5, 4.0, 0, HC, 1.f, true},
     };
     for (const auto& q : ps) {
       auto a = hall(); a[q.i] = 0.f; a[q.fix] = q.fixV; a[EARLY] = 0.f; a[PREDELAY] = 0.f;

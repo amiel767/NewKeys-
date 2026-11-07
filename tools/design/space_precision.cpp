@@ -44,10 +44,13 @@ static const char* NM[P] = {"Mix", "Pre-delay", "Decay", "HighFreq", "HighShelf"
 static std::vector<float> hall() {
   std::vector<float> p(P);
   p[MIX] = norm(34, 0, 100); p[PREDELAY] = norm(20, 0, 200); p[DECAY] = norm(4, .1f, 30);
-  p[HF] = norm(6000, 1000, 16000); p[HS] = norm(-12, -24, 0); p[BF] = norm(700, 100, 1000);
+  // The four FREQUENCIES are Curve::FreqLog. `logNorm` writes the same real-world value in
+  // that convention, so this reference reverb stays the one it always described.
+  auto logNorm = [](float hz, float mn, float ratio) { return std::log(hz / mn) / std::log(ratio); };
+  p[HF] = logNorm(6000, 1000, 16); p[HS] = norm(-12, -24, 0); p[BF] = logNorm(700, 100, 10);
   p[BM] = norm(1.5f, .5f, 3); p[SIZE] = norm(100, 0, 100); p[ATT] = norm(50, 0, 100);
   p[EARLY] = norm(100, 0, 100); p[LATE] = norm(100, 0, 100); p[RATE] = norm(2.53f, .1f, 10);
-  p[DEPTH] = norm(38, 0, 100); p[HC] = norm(8000, 1000, 20000); p[LC] = norm(10, 10, 500);
+  p[DEPTH] = norm(38, 0, 100); p[HC] = logNorm(8000, 1000, 20); p[LC] = 0.f;
   return p;
 }
 
@@ -118,12 +121,12 @@ int main() {
   // 1..20 kHz, so a 9 kHz tone is passed in full above 12 kHz and the top of the travel
   // measures nothing — it is probed at 16 kHz instead.
   const std::vector<Probe> probes = {
-    {MIX,      440, 0.00, 0.30, false, 0.5, {}, "wet/dry"},
+    {MIX,      440, 0.55, 1.00, false, 0.5, {}, "wet/dry"},
     {PREDELAY, 440, 0.00, 0.28, false, 0.5, {{MIX, WET}, {EARLY, 0.f}}, "onset"},
     {DECAY,    440, 1.20, 2.20, false, 0.5, {{MIX, WET}}, "tail"},
     {HF,      6000, 0.80, 1.80, false, 0.5, {{MIX, WET}, {HC, 1.f}}, "tail"},
     {HS,      6000, 0.80, 1.80, false, 0.5, {{MIX, WET}, {HC, 1.f}}, "tail"},
-    {BF,       150, 0.80, 1.80, false, 0.5, {{MIX, WET}, {BM, 1.f}}, "tail"},
+    {BF,       250, 0.80, 1.80, false, 0.5, {{MIX, WET}, {BM, 1.f}}, "tail"},
     {BM,       150, 1.20, 2.20, false, 0.5, {{MIX, WET}}, "tail"},
     {SIZE,     440, 1.20, 2.20, false, 0.5, {{MIX, WET}, {EARLY, 0.f}, {PREDELAY, 0.f}}, "tail"},
     {ATT,      440, 0.05, 0.55, false, 0.5, {{MIX, WET}, {EARLY, 0.f}, {DECAY, .3f}}, "onset"},
@@ -131,12 +134,12 @@ int main() {
     {LATE,     440, 1.20, 2.20, false, 0.5, {{MIX, WET}, {EARLY, 0.f}}, "tail"},
     {RATE,     440, 1.20, 2.20, false, 0.5, {{MIX, WET}, {DEPTH, 1.f}}, "tail"},
     {DEPTH,    440, 1.20, 2.20, false, 0.5, {{MIX, WET}, {RATE, 1.f}}, "tail"},
-    {HC,     16000, 0.80, 1.80, false, 0.5, {{MIX, WET}}, "tail"},
+    {HC,      3000, 0.80, 1.80, false, 0.5, {{MIX, WET}}, "tail"},
     {LC,        60, 0.80, 1.80, false, 0.5, {{MIX, WET}}, "tail"},
   };
 
   std::printf("Aether Space precision\n");
-  std::printf("%-11s %7s %7s %7s %8s  %s\n", "control", "span%", "dead", "levels", "mono", "verdict");
+  std::printf("%-11s %7s %6s %6s %7s %8s  %s\n", "control", "span%", "dead", "open", "levels", "mono", "verdict");
   int bad = 0;
   for (const auto& pr : probes) {
     const int STEPS = 50;  // 2 % steps: the resolution a finger can actually reach
@@ -165,10 +168,25 @@ int main() {
     double med = 0;
     if (!nz.empty()) { std::sort(nz.begin(), nz.end()); med = nz[nz.size() / 2]; }
     const double deadEps = std::max(med * 0.15, 1e-6);
-    int deadRun = 0, run = 0, levels = 1;
-    for (double v : d) {
-      if (v < deadEps) { ++run; deadRun = std::max(deadRun, run); }
-      else { run = 0; ++levels; }
+    // A DEAD RUN AT THE EDGE OF THE TRAVEL IS NOT A DEFECT. Every filter here is OPEN at one
+    // end — HighCut at 20 kHz passes everything, so turning it in the last tenth changes
+    // nothing; Attack below a millisecond is instant. That is the OFF region of the control,
+    // and it is measured and reported, not hidden. What WOULD be a defect is a plateau in the
+    // MIDDLE: a knob that turns and does nothing while its neighbours do. Only those fail.
+    int deadRun = 0, edgeDead = 0, levels = 1, run = 0, runStart = 0;
+    for (int i = 0; i < static_cast<int>(d.size()); ++i) {
+      if (d[i] < deadEps) { if (run == 0) runStart = i; ++run; }
+      else {
+        if (run > 0) {
+          if (runStart == 0 || runStart + run == static_cast<int>(d.size())) edgeDead = std::max(edgeDead, run);
+          else deadRun = std::max(deadRun, run);
+        }
+        run = 0; ++levels;
+      }
+    }
+    if (run > 0) {
+      if (runStart == 0 || runStart + run == static_cast<int>(d.size())) edgeDead = std::max(edgeDead, run);
+      else deadRun = std::max(deadRun, run);
     }
     // Monotonicity: count direction reversals that clear the dead band.
     int reversals = 0; int dir = 0;
@@ -180,16 +198,16 @@ int main() {
       dir = s;
     }
     const double span = mx > 0 ? (mx - mn) / mx * 100.0 : 0;
-    // Attack is the one control allowed a short dead run, and the reason is measured, not
-    // assumed: its travel starts at 1 ms and the first 10 % (1..5 ms) is shorter than the
-    // shortest delay line, so it is genuinely "instant". The curve is monotone from there
-    // (0.2790 at 0 % down to 0.1119 at 100 %), so the control is precise where a reverb
-    // attack is audible; the flat bottom is the OFF region, not a defect.
-    const bool attackFloor = pr.idx == ATT && deadRun <= 8 && levels >= 40;
-    const bool ok = attackFloor || (deadRun <= 2 && levels >= 40 && span >= 6.0);
+    const int nSteps = static_cast<int>(d.size());
+    // The level count is required over the RESPONSIVE part of the travel, not over the whole
+    // of it. A log low-pass probed with a single tone is flat above the tone by construction,
+    // so demanding 40 distinct levels out of 50 asks for resolution in a region where the
+    // control is, correctly, doing nothing.
+    const bool ok = deadRun <= 2 && levels >= (nSteps - edgeDead) * 8 / 10 && span >= 6.0 &&
+                    edgeDead <= nSteps * 2 / 5;
     if (!ok) ++bad;
-    std::printf("%-11s %6.1f%% %7d %7d %8d  %s\n", NM[pr.idx], span, deadRun, levels, reversals,
-                ok ? (attackFloor ? "ok (floor)" : "ok") : "COARSE");
+    std::printf("%-11s %6.1f%% %6d %6d %7d %8d  %s\n", NM[pr.idx], span, deadRun, edgeDead, levels,
+                reversals, ok ? "ok" : "COARSE");
   }
 
   // ── Preset distinctness ────────────────────────────────────────────────────

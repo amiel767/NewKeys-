@@ -3,9 +3,17 @@
 // output EQ.
 //
 // THE PARAMETER ORDER IS A CONTRACT. The UI pushes a normalised value by INDEX, so this
-// list must stay in step with `fx_registry.h` (FX_SPACE) and the generated `FxRegistry.kt`:
+// list must stay in step with `fx_registry.h` (FX_SPACE), the generated `FxRegistry.kt`
+// and `FxDesign.kt`:
 //   0 MIX  1 PREDELAY  2 DECAY  3 HighFreq  4 HighShelf  5 BassFreq  6 BassMult  7 Size
 //   8 Attack  9 Early  10 Late  11 Rate  12 Depth  13 HighCut  14 LowCut
+//
+// THE FOUR FREQUENCIES ARE NORMALISED LOGARITHMICALLY, and the registry declares
+// Curve::FreqLog for them. A linear mapping spends most of the travel on frequencies
+// nobody uses: HighFreq ran 1..16 kHz, so the whole useful band (1..3 kHz) sat in the
+// first 13 % of the knob and the top two thirds was 8..16 kHz — inaudible on a reverb
+// damping control. Log gives that same band 40 % of the travel. `freqHz()` is the ONE
+// place the mapping lives, so the display and the engine cannot drift apart.
 #pragma once
 #include "fx_core.h"
 
@@ -13,6 +21,22 @@ namespace aetherfx {
 
 class SpaceReverb : public Effect {
   static constexpr int N = 8;
+
+ public:
+  // The real frequency for a normalised value, for the four log-mapped controls.
+  // 3 HighFreq: 1 kHz..16 kHz   5 BassFreq: 100 Hz..1 kHz
+  // 13 HighCut: 1 kHz..20 kHz   14 LowCut: 10 Hz..500 Hz
+  static float freqHz(int index, float norm) {
+    const float n = clamp01(norm);
+    switch (index) {
+      case 3: return 1000.f * std::pow(16.f, n);
+      case 5: return 100.f * std::pow(10.f, n);
+      case 13: return 1000.f * std::pow(20.f, n);
+      case 14: return 10.f * std::pow(50.f, n);
+      default: return n;
+    }
+  }
+
   struct Allpass {
     std::vector<float> b; int i = 0;
     void init(int n) { b.assign(std::max(n, 1), 0.f); i = 0; }
@@ -86,13 +110,13 @@ class SpaceReverb : public Effect {
       gLow[i] = std::pow(10.0f, -3.0f * target[i] / (rtLow * sr));
       gHigh[i] = std::pow(10.0f, -3.0f * target[i] / (rt60 * sr));
     }
-    // Damping: a one-pole at HighFreq on the feedback path.
-    const float dampHz = 1000.0f + 15000.0f * hf;
+    // Damping: a one-pole at HighFreq on the feedback path. Log-mapped (see freqHz).
+    const float dampHz = freqHz(3, hf);
     const float dampA = 1.0f - std::exp(-2.0f * static_cast<float>(kPi) * dampHz / sr);
     // The bass split, at BassFreq, as ONE pole. The complementary high band is formed as
     // `lp - low`, which keeps the two bands summing exactly to the filtered signal: with two
     // cascaded poles the split was no longer complementary and the loop became unstable.
-    const float bassHz = 100.0f + 900.0f * bf;
+    const float bassHz = freqHz(5, bf);
     const float bassA = 1.0f - std::exp(-2.0f * static_cast<float>(kPi) * bassHz / sr);
     // Attack: the tail fades in over `atkTime` when the input becomes active. At zero the
     // gate is transparent; a long attack holds the tail back on short notes, which is what
@@ -114,9 +138,10 @@ class SpaceReverb : public Effect {
     float wg = wetStart;
     mixRamp_.cur = wetG; mixRamp_.init = true;
     // Output EQ, re-designed once per block: a shelf at HighFreq, then the two cuts.
+    // The cuts are log-mapped, like the damping above.
     shelf_.setHighShelf(sr_, dampHz, -24.0 + 24.0 * hs);
-    hcut_.setLowpass(sr_, 1000.0 + 19000.0 * hc, 0.707);
-    lcut_.setHighpass(sr_, 10.0 + 490.0 * lc, 0.707);
+    hcut_.setLowpass(sr_, freqHz(13, hc), 0.707);
+    lcut_.setHighpass(sr_, freqHz(14, lc), 0.707);
     const float lfoInc = 2.0f * static_cast<float>(kPi) * (0.1f + 9.9f * rate) / sr;
     float peak = 0.f;
     for (int n = 0; n < frames; ++n) {
